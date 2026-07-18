@@ -47,6 +47,7 @@ interface GraficoProps {
   tema: Tema;
   yLabel: string;
   formatoValor?: (n: number) => string;
+  resaltado?: ClaveSerie | null; // serie a destacar (atenúa las demás)
 }
 
 interface ItemHover {
@@ -95,7 +96,7 @@ function semanaDesdePx(px: number, esc: Escalas): number | null {
 }
 
 export const Grafico = forwardRef<GraficoHandle, GraficoProps>(function Grafico(
-  { series, colores, tema, yLabel, formatoValor },
+  { series, colores, tema, yLabel, formatoValor, resaltado = null },
   ref,
 ) {
   const fmtVal = formatoValor ?? fmt;
@@ -106,6 +107,25 @@ export const Grafico = forwardRef<GraficoHandle, GraficoProps>(function Grafico(
   const [hover, setHover] = useState<EstadoHover | null>(null);
   const [anclado, setAnclado] = useState<number | null>(null);
   const [escalas, setEscalas] = useState<Escalas | null>(null);
+  // Grupos <g> de cada línea (en orden de `series`), para resaltar sin re-render.
+  const lineasRef = useRef<{ clave: ClaveSerie; el: SVGGElement | null }[]>([]);
+  const resaltadoRef = useRef<ClaveSerie | null>(null);
+
+  // Atenúa las líneas no resaltadas manipulando opacidad en el DOM (reconstruir
+  // el gráfico en cada hover sería costoso).
+  const aplicarResaltado = useCallback((r: ClaveSerie | null) => {
+    const existe = r != null && lineasRef.current.some((l) => l.clave === r);
+    for (const { clave, el } of lineasRef.current) {
+      if (!el) continue;
+      el.style.transition = "opacity 120ms ease";
+      el.style.opacity = !existe || clave === r ? "1" : "0.12";
+    }
+  }, []);
+
+  useEffect(() => {
+    resaltadoRef.current = resaltado;
+    aplicarResaltado(resaltado);
+  }, [resaltado, aplicarResaltado]);
 
   // Estado del crosshair para una semana dada (valores de cada serie).
   const construirEstado = useCallback(
@@ -279,6 +299,16 @@ export const Grafico = forwardRef<GraficoHandle, GraficoProps>(function Grafico(
 
       plotRef.current.replaceChildren(plot);
 
+      // Refs a las líneas (orden de `series`) y reaplica el resaltado vigente.
+      const grupos = [
+        ...plot.querySelectorAll<SVGGElement>('[aria-label="line"]'),
+      ];
+      lineasRef.current = series.map((s, i) => ({
+        clave: s.clave,
+        el: grupos[i] ?? null,
+      }));
+      aplicarResaltado(resaltadoRef.current);
+
       const xs = plot.scale("x") as unknown as {
         apply: (v: number) => number;
         invert: (v: number) => number;
@@ -298,7 +328,7 @@ export const Grafico = forwardRef<GraficoHandle, GraficoProps>(function Grafico(
     return () => {
       cancelado = true;
     };
-  }, [series, colores, tema, ancho, yLabel, hayDatos]);
+  }, [series, colores, tema, ancho, yLabel, hayDatos, aplicarResaltado]);
 
   const onMove = useCallback(
     (ev: React.MouseEvent<HTMLDivElement>) => {
@@ -338,6 +368,12 @@ export const Grafico = forwardRef<GraficoHandle, GraficoProps>(function Grafico(
   }
 
   const cerca = mostrado ? mostrado.x > ancho * 0.62 : false;
+  const resaltadoValido =
+    resaltado != null && series.some((s) => s.clave === resaltado)
+      ? resaltado
+      : null;
+  const atenua = (clave: ClaveSerie) =>
+    resaltadoValido != null && clave !== resaltadoValido ? 0.2 : 1;
 
   return (
     <div ref={contRef} className="relative w-full select-none">
@@ -371,6 +407,7 @@ export const Grafico = forwardRef<GraficoHandle, GraficoProps>(function Grafico(
                 height: 8,
                 background: it.color,
                 boxShadow: `0 0 0 2px ${CHROME[tema].surface}`,
+                opacity: atenua(it.clave),
               }}
             />
           ))}
@@ -393,6 +430,7 @@ export const Grafico = forwardRef<GraficoHandle, GraficoProps>(function Grafico(
                 <li
                   key={String(it.clave)}
                   className="flex items-center justify-between gap-3"
+                  style={{ opacity: atenua(it.clave) }}
                 >
                   <span className="flex min-w-0 items-center gap-1.5">
                     <span

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Download, ExternalLink, LineChart } from "lucide-react";
+import { Download, ExternalLink, LineChart, Loader2 } from "lucide-react";
 import type {
   BaseDatos,
   ClaveSerie,
@@ -55,6 +55,9 @@ export function Dashboard() {
   const [cargandoDuck, setCargandoDuck] = useState(false);
   const [errorDuck, setErrorDuck] = useState<string | null>(null);
   const graficoRef = useRef<GraficoHandle>(null);
+  const [resaltado, setResaltado] = useState<ClaveSerie | null>(null);
+  // ¿DuckDB-WASM ya cargó al menos una vez? (para el mensaje de carga)
+  const [motorListo, setMotorListo] = useState(false);
 
   useEffect(() => {
     const ac = new AbortController();
@@ -101,6 +104,7 @@ export function Dashboard() {
     consultarSeries(filtros)
       .then((r) => {
         if (!cancel) {
+          setMotorListo(true);
           setSeriesDuck(r);
           setCargandoDuck(false);
         }
@@ -163,6 +167,8 @@ export function Dashboard() {
 
   const { lookups, meta } = base;
   const detalleActivo = usaDetalle(filtros);
+  const mostrarCarga = detalleActivo && cargandoDuck && filtros.multi.length > 0;
+  const primeraCarga = mostrarCarga && seriesDuck.length === 0;
   const crudas = detalleActivo ? seriesDuck : crudasJS;
   const series: Serie[] = crudas.map((s) => {
     const { label, esActual } = describir(
@@ -354,26 +360,51 @@ export function Dashboard() {
             cargar el motor de consultas (DuckDB-WASM).
           </p>
         )}
-        {detalleActivo && cargandoDuck && filtros.multi.length > 0 && (
-          <p className="mb-4 text-sm text-muted">
-            Consultando datos de detalle en el navegador…
-          </p>
-        )}
 
-        <Grafico
-          ref={graficoRef}
-          series={seriesVista}
-          colores={colores}
-          tema={tema}
-          yLabel={yLabel}
-          formatoValor={formatoValor}
-        />
+        {primeraCarga ? (
+          <CargandoGrafico
+            mensaje={
+              motorListo
+                ? "Consultando datos en el navegador…"
+                : "Cargando el motor de consultas en el navegador (solo la primera vez)…"
+            }
+          />
+        ) : (
+          <div className="relative">
+            <Grafico
+              ref={graficoRef}
+              series={seriesVista}
+              colores={colores}
+              tema={tema}
+              yLabel={yLabel}
+              formatoValor={formatoValor}
+              resaltado={resaltado}
+            />
+            {mostrarCarga && (
+              <div className="pointer-events-none absolute inset-x-0 top-0 flex justify-center">
+                <span className="mt-3 inline-flex items-center gap-1.5 rounded-full border border-line bg-surface/90 px-3 py-1 text-xs text-muted shadow-sm backdrop-blur">
+                  <Loader2 size={12} className="animate-spin" aria-hidden />
+                  Actualizando…
+                </span>
+              </div>
+            )}
+          </div>
+        )}
 
         <Leyenda
           series={seriesVista}
           colores={colores}
           reverso={filtros.comparar === "anio"}
+          resaltado={resaltado}
+          onResaltar={setResaltado}
         />
+
+        {seriesVista.filter((s) => s.puntos.length > 0).length > 8 && (
+          <p className="mt-2 text-xs text-muted">
+            Muchas series: pasa el cursor sobre una de la leyenda para
+            resaltarla.
+          </p>
+        )}
 
         <p className="mt-4 border-t border-line pt-3 text-xs text-muted">
           Se excluye la última semana epidemiológica del año en curso por estar
@@ -442,6 +473,15 @@ export function Dashboard() {
   );
 }
 
+function CargandoGrafico({ mensaje }: { mensaje: string }) {
+  return (
+    <div className="flex h-[340px] flex-col items-center justify-center gap-3 rounded-lg border border-line px-6 text-center text-sm text-muted">
+      <Loader2 size={22} className="animate-spin text-accent" aria-hidden />
+      {mensaje}
+    </div>
+  );
+}
+
 function Marco({ children }: { children: React.ReactNode }) {
   return (
     <main className="mx-auto w-full max-w-5xl px-4 py-6 sm:px-6 sm:py-10 lg:max-w-6xl xl:max-w-7xl">
@@ -454,31 +494,51 @@ function Leyenda({
   series,
   colores,
   reverso,
+  resaltado,
+  onResaltar,
 }: {
   series: Serie[];
   colores: Map<ClaveSerie, string>;
   reverso: boolean;
+  resaltado: ClaveSerie | null;
+  onResaltar: (clave: ClaveSerie | null) => void;
 }) {
   const conDatos = series.filter((s) => s.puntos.length > 0);
   if (conDatos.length < 2) return null;
   const orden = reverso ? [...conDatos].reverse() : conDatos;
   return (
-    <ul className="mt-4 flex flex-wrap gap-x-4 gap-y-2">
-      {orden.map((s) => (
-        <li key={String(s.clave)} className="flex items-center gap-1.5 text-sm">
-          <span
-            className="inline-block h-[3px] w-4 rounded-full"
-            style={{ background: colores.get(s.clave) ?? "var(--muted)" }}
-            aria-hidden
-          />
-          <span className={s.esActual ? "font-semibold text-ink" : "text-ink-2"}>
-            {s.label}
-            {s.esActual && (
-              <span className="font-normal text-muted"> (en curso)</span>
-            )}
-          </span>
-        </li>
-      ))}
+    <ul className="mt-4 flex flex-wrap gap-x-1 gap-y-0.5">
+      {orden.map((s) => {
+        const atenuado = resaltado != null && s.clave !== resaltado;
+        return (
+          <li key={String(s.clave)}>
+            <button
+              type="button"
+              onMouseEnter={() => onResaltar(s.clave)}
+              onMouseLeave={() => onResaltar(null)}
+              onFocus={() => onResaltar(s.clave)}
+              onBlur={() => onResaltar(null)}
+              className={`flex items-center gap-1.5 rounded px-1.5 py-0.5 text-sm transition-opacity hover:bg-ink/[0.04] ${
+                atenuado ? "opacity-40" : "opacity-100"
+              }`}
+            >
+              <span
+                className="inline-block h-[3px] w-4 shrink-0 rounded-full"
+                style={{ background: colores.get(s.clave) ?? "var(--muted)" }}
+                aria-hidden
+              />
+              <span
+                className={s.esActual ? "font-semibold text-ink" : "text-ink-2"}
+              >
+                {s.label}
+                {s.esActual && (
+                  <span className="font-normal text-muted"> (en curso)</span>
+                )}
+              </span>
+            </button>
+          </li>
+        );
+      })}
     </ul>
   );
 }
