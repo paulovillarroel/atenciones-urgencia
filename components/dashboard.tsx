@@ -291,7 +291,7 @@ export function Dashboard() {
   const exportar = () => {
     const dim = pluralDe(filtros.comparar).toLowerCase();
     graficoRef.current?.exportarPNG({
-      titulo: "Atenciones de urgencia respiratorias · Chile",
+      titulo: "Urgencias respiratorias en Chile",
       subtitulo:
         `Comparación por ${dim}` +
         (ctx.length ? ` · ${ctx.join(" · ")}` : "") +
@@ -331,10 +331,11 @@ export function Dashboard() {
           />
           <div>
             <h1 className="text-xl font-semibold tracking-tight text-ink sm:text-2xl">
-              Atenciones de urgencia respiratorias
+              Urgencias respiratorias
             </h1>
             <p className="mt-1 text-sm text-ink-2">
-              Chile · por semana epidemiológica · datos abiertos del DEIS
+              Chile · atenciones y hospitalizaciones · por semana epidemiológica ·
+              datos abiertos del DEIS
             </p>
           </div>
         </div>

@@ -20,27 +20,27 @@ const DESCRIPCION =
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITIO),
-  title: "Atenciones de urgencia respiratorias en Chile",
+  title: "Urgencias respiratorias en Chile",
   description: DESCRIPCION,
   openGraph: {
     type: "website",
     locale: "es_CL",
     url: `${SITIO}/`,
-    siteName: "Atenciones de urgencia respiratorias · Chile",
-    title: "Atenciones de urgencia respiratorias en Chile",
+    siteName: "Urgencias respiratorias · Chile",
+    title: "Urgencias respiratorias en Chile",
     description: DESCRIPCION,
     images: [
       {
         url: `${SITIO}/og.png`,
         width: 1200,
         height: 630,
-        alt: "Visualizador de atenciones de urgencia respiratorias en Chile",
+        alt: "Visualizador de urgencias respiratorias en Chile",
       },
     ],
   },
   twitter: {
     card: "summary_large_image",
-    title: "Atenciones de urgencia respiratorias en Chile",
+    title: "Urgencias respiratorias en Chile",
     description: DESCRIPCION,
     images: [`${SITIO}/og.png`],
   },

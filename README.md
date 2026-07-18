@@ -1,6 +1,6 @@
-# Atenciones de urgencia respiratorias en Chile
+# Urgencias respiratorias en Chile
 
-Visualizador web de las **atenciones de urgencia por causas respiratorias** en Chile,
+Visualizador web de las **atenciones y hospitalizaciones de urgencia por causas respiratorias** en Chile,
 por semana epidemiológica. Permite **comparar por cualquier dimensión** —años, causas
 (CIE-10), grupos etarios, regiones o servicios de salud— con las demás como filtro de
 contexto, ver **tasas por 100.000 habitantes** (al comparar años, regiones o
