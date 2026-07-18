@@ -1,30 +1,46 @@
 # Urgencias respiratorias en Chile
 
-Visualizador web de las **atenciones y hospitalizaciones de urgencia por causas respiratorias** en Chile,
-por semana epidemiológica. Permite **comparar por cualquier dimensión** —años, causas
-(CIE-10), grupos etarios, regiones o servicios de salud— con las demás como filtro de
-contexto, ver **tasas por 100.000 habitantes** (al comparar años, regiones o
-servicios de salud, ajustadas por grupo etario y área), y **exportar el gráfico como
-imagen (PNG)** con etiquetas directas. Sitio
-estático que se **actualiza a diario** desde los datos abiertos del DEIS (Ministerio
-de Salud).
+Visualizador web de las **atenciones y hospitalizaciones de urgencia por causas
+respiratorias** en Chile, por semana epidemiológica. Permite:
+
+- **Comparar por cualquier dimensión** —años, causas (CIE-10), grupos etarios,
+  regiones, servicios de salud, **establecimientos** o **comunas**— con las demás
+  como filtro de contexto.
+- Alternar entre **atenciones** y **hospitalizaciones** (toggle de *Sección*).
+- Ver **tasas por 100.000 habitantes** (al comparar años, regiones, servicios o
+  comunas, ajustadas por grupo etario y área).
+- Cambiar el eje Y entre escala **lineal y logarítmica**.
+- **Resaltar** una serie entre muchas (pasar el cursor por la leyenda; clic para
+  fijarla).
+- **Compartir** la vista por enlace (los filtros viven en la URL) y **exportar** a
+  **PNG** o **CSV**.
+
+Sitio estático que se **actualiza a diario** desde los datos abiertos del DEIS
+(Ministerio de Salud).
 
 **[▶ Ver el visor en vivo](https://paulovillarroel.github.io/atenciones-urgencia/)**
 
-![Visor de atenciones de urgencia respiratorias en Chile — comparación por años](docs/captura.png)
+![Urgencias respiratorias en Chile — comparación por años](docs/captura.png)
 
 - **Fuente:** [Atenciones de urgencia – causas respiratorias](https://datos.gob.cl/dataset/atenciones-de-urgencia-causas-respiratorias) (datos.gob.cl / DEIS).
-- **Gráfico:** eje X = semana epidemiológica, eje Y = volumen de atenciones; una línea por cada valor de la dimensión que elijas comparar.
-- **Stack:** Next.js 16 (export estático) · React 19 · Tailwind v4 · Observable Plot · DuckDB (pipeline).
+- **Gráfico:** eje X = semana epidemiológica, eje Y = volumen de atenciones u
+  hospitalizaciones (o su tasa); una línea por cada valor de la dimensión que compares.
+- **Stack:** Next.js 16 (export estático) · React 19 · Tailwind v4 · Observable Plot ·
+  DuckDB (pipeline en Node + DuckDB-WASM en el navegador).
 
 ## Cómo funciona
 
 1. Un script (`scripts/build-data.mjs`) descarga el parquet del DEIS (~67 MB) y con
-   **DuckDB** lo limpia y lo **pre-agrega** a un archivo compacto (~1 MB) que se
-   guarda en `public/data/`.
-2. La app estática (Next.js `output: "export"`) carga ese archivo en el navegador y
-   **filtra y grafica del lado del cliente** (sin servidor, sin descargar los 67 MB).
-3. Una **GitHub Action** repite los pasos 1 y 2 **cada día** y publica en GitHub Pages.
+   **DuckDB** lo limpia y lo **pre-agrega** a un JSON columnar compacto en
+   `public/data/` (grano: año × semana × región × servicio × causa).
+2. La app estática (Next.js `output: "export"`) carga ese JSON y **filtra y grafica
+   del lado del cliente** (sin servidor, sin bajar los 67 MB).
+3. Las dimensiones finas —**establecimiento** y **comuna**, que son cientos— no caben
+   pre-agregadas: se consultan en el navegador con **DuckDB-WASM** sobre un
+   `detalle.parquet` leído por rangos HTTP, con búsqueda por texto.
+4. El estado de los filtros vive en la **URL**, así cada vista es enlazable y compartible.
+5. Una **GitHub Action** repite el pipeline y publica en GitHub Pages **cada día**
+   (y en cada push).
 
 ## Desarrollo local
 
@@ -56,14 +72,20 @@ npm run lint
 
 El workflow calcula solo el *base path*: en una **página de proyecto** el sitio queda
 en `https://<usuario>.github.io/<repo>/`; en una página de usuario
-(`<usuario>.github.io`) queda en la raíz.
+(`<usuario>.github.io`) queda en la raíz. La URL absoluta que usan las tarjetas
+sociales (Open Graph) está en `app/layout.tsx` (constante `SITIO`).
 
 ## Decisiones sobre los datos
 
+- **Atenciones y hospitalizaciones.** El dataset trae, además de las atenciones de
+  urgencia (`OrdenCausa` 3–11), cuántas derivaron en **hospitalización**
+  (`OrdenCausa` 33/34/35, prefijo `- `: total respiratorio + dos tipos de COVID). El
+  toggle *Sección* cambia entre ambas: distinto set de causas y etiqueta del eje.
 - **Semana incompleta.** Se descarta la última semana epidemiológica del año en curso
   por estar incompleta. En el año en curso la semana 53 es la *primera* (arrastre de
   inicio de enero), así que "última" es la de mayor número del bloque contiguo 1..N,
-  no la 53. La regla es dinámica (no hay años fijados en el código).
+  no la 53. La regla es dinámica (no hay años fijados en el código). El eje X llega
+  hasta la última semana con datos (evita media cancha vacía en el año en curso).
 - **Sin doble conteo.** `OrdenCausa = 3` (*Total sistema respiratorio, J00-J98*) ya es la
   suma de sus subcausas (4–9); el COVID-19 (10/11) se contabiliza aparte. El gráfico
   nunca suma sobre todas las causas.
@@ -73,41 +95,32 @@ en `https://<usuario>.github.io/<repo>/`; en una página de usuario
   solo en el total nacional ("Todas"), no como opción filtrable.
 - **Grupos etarios.** El dato trae los conteos por edad en columnas anchas
   (`<1`, `1–4`, `5–14`, `15–64`, `≥65`); el filtro de grupo etario selecciona la columna.
-- **Tasas por 100.000 hab.** Al comparar **años, regiones o servicios de salud** se
-  puede cambiar de valor absoluto a tasa. El denominador se **ajusta al contexto**:
-  al grupo etario elegido (población por banda de edad) y al área geográfica (región
-  o servicio seleccionado, o total país al comparar años). Población **territorial
-  (residente) del INE** (Estimaciones y Proyecciones 2002–2035, base Censo 2017),
-  **por año** y por banda etaria (las del DEIS: `<1`, `1–4`, `5–14`, `15–64`, `≥65`).
-  Región y país se agregan directo del cuadro comunal INE; el total por servicio (que
-  no tiene serie etaria oficial) se distribuye por la estructura etaria de su región.
-  No usa población beneficiaria FONASA. La tabla vive en `scripts/poblacion.mjs`.
-
-## Hospitalizaciones (pendiente para v2)
-
-Este mismo dataset trae, además de las atenciones, una serie de **hospitalizaciones**
-como filas con `OrdenCausa` 33, 34 y 35 (las que empiezan con `- `: sistema
-respiratorio y COVID). En v1 se omiten. Para incorporarlas:
-
-1. En `scripts/build-data.mjs`, incluir esos órdenes (hoy el filtro es
-   `ATENCION_ORDENES = [3..11]`) marcándolos como una sección aparte.
-2. Agregar en la interfaz un selector *atenciones ↔ hospitalizaciones* que cambie el
-   conjunto de causas y la etiqueta del eje Y.
+- **Tasas por 100.000 hab.** Al comparar **años, regiones, servicios de salud o
+  comunas** se puede cambiar de valor absoluto a tasa. El denominador se **ajusta al
+  contexto**: al grupo etario elegido (población por banda de edad) y al área
+  geográfica. Población **territorial (residente) del INE** (Estimaciones y
+  Proyecciones 2002–2035, base Censo 2017), **por año** y por banda etaria. Región,
+  comuna y país se agregan del cuadro comunal INE; el total por servicio (sin serie
+  etaria oficial) se distribuye por la estructura etaria de su región. No usa población
+  beneficiaria FONASA. La tabla vive en `scripts/poblacion.mjs` (horneada en el repo:
+  no se regenera en CI).
 
 ## Estructura
 
 ```
-scripts/build-data.mjs   Pipeline de datos (DuckDB): descarga, limpia y pre-agrega
-public/data/             Datos generados (JSON columnar + lookups + meta) — gitignored
-lib/                     Tipos, carga/agregación, colores (paleta), formato
-components/              Dashboard, filtros, gráfico (Observable Plot), tema
-app/                     Next.js App Router (layout, página, estilos)
+scripts/build-data.mjs   Pipeline (DuckDB en Node): descarga, limpia, pre-agrega y escribe detalle.parquet
+scripts/poblacion.mjs    Población INE por año/banda (región, servicio, comuna, país) para tasas
+public/data/             Datos generados (JSON columnar + lookups + meta + detalle) — gitignored
+public/og.png            Imagen de la tarjeta social (Open Graph)
+lib/                     Tipos, carga/agregación, consultas DuckDB-WASM, colores, formato, estado-en-URL
+components/              Dashboard, filtros, gráfico (Observable Plot), buscador, tema
+app/                     Next.js App Router (layout con metadata/OG, página, estilos)
 .github/workflows/       GitHub Action (refresco diario + deploy a Pages)
 ```
 
 ## Créditos
 
-- **Datos de atenciones:** DEIS – Ministerio de Salud de Chile, publicados en datos.gob.cl.
+- **Datos:** DEIS – Ministerio de Salud de Chile, publicados en datos.gob.cl.
 - **Población (para tasas):** INE – Estimaciones y Proyecciones de Población de Chile 2002–2035, base Censo 2017.
 - **Visualización y desarrollo:** [Paulo Villarroel Tapia](https://www.linkedin.com/in/paulovillarroel/).
 - **Inspiración metodológica:** taller de datos abiertos en R, [paulovillarroel/api-datos-gob](https://github.com/paulovillarroel/api-datos-gob).
