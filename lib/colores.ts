@@ -12,7 +12,7 @@ const CATEGORICAL_LIGHT = [
   "#008300", // verde
   "#e87ba4", // magenta
   "#eda100", // amarillo
-  "#1baf7a", // aqua
+  "#00a1c4", // cian (antes aqua/verde-azulado: se confundía con el verde)
   "#eb6834", // naranja
   "#4a3aa7", // violeta
   "#e34948", // rojo
@@ -22,7 +22,7 @@ const CATEGORICAL_DARK = [
   "#008300",
   "#d55181",
   "#c98500",
-  "#199e70",
+  "#0fa3c4", // cian (antes verde-azulado)
   "#d95926",
   "#9085e9",
   "#e66767",
