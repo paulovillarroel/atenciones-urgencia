@@ -1,7 +1,15 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Download, ExternalLink, LineChart, Loader2, Lock } from "lucide-react";
+import {
+  Check,
+  Download,
+  ExternalLink,
+  LineChart,
+  Loader2,
+  Lock,
+  Share2,
+} from "lucide-react";
 import type {
   BaseDatos,
   ClaveSerie,
@@ -349,6 +357,7 @@ export function Dashboard() {
             )}
           </div>
           <div className="flex items-center gap-1.5">
+            <BotonCompartir />
             <button
               type="button"
               onClick={exportar}
@@ -521,6 +530,37 @@ export function Dashboard() {
         </p>
       </footer>
     </Marco>
+  );
+}
+
+function BotonCompartir() {
+  const [copiado, setCopiado] = useState(false);
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const copiar = async () => {
+    try {
+      // El estado de los filtros ya vive en la URL (ver lib/estado-url).
+      await navigator.clipboard.writeText(window.location.href);
+      setCopiado(true);
+      if (timer.current) clearTimeout(timer.current);
+      timer.current = setTimeout(() => setCopiado(false), 1600);
+    } catch {
+      // Sin clipboard API o contexto no seguro: sin acción.
+    }
+  };
+  return (
+    <button
+      type="button"
+      onClick={copiar}
+      title="Copiar enlace a esta vista (con los filtros actuales)"
+      className="inline-flex items-center gap-1.5 rounded-md border border-line px-2.5 py-1.5 text-xs font-medium text-ink-2 transition-colors hover:text-ink"
+    >
+      {copiado ? (
+        <Check size={14} className="text-accent" aria-hidden />
+      ) : (
+        <Share2 size={14} aria-hidden />
+      )}
+      {copiado ? "¡Copiado!" : "Compartir"}
+    </button>
   );
 }
 
