@@ -574,11 +574,18 @@ async function componerPNG(
     (m, p) => Math.max(m, medidor.measureText(p.texto).width),
     0,
   );
+  // Ancho extra a la derecha para las etiquetas. Con resaltado la etiqueta va
+  // pegada al final de su línea, así que solo se reserva lo que sobresalga de W.
+  const finResaltado = puntos.length
+    ? puntos[0].ex + 6 + dotR * 2 + dotGap + maxTextW + 8
+    : W;
   const gutter = anclado
     ? 0
-    : n
-      ? Math.ceil(8 + dotR * 2 + dotGap + maxTextW + 14)
-      : padX;
+    : resaltado != null
+      ? Math.max(0, Math.ceil(finResaltado - W))
+      : n
+        ? Math.ceil(8 + dotR * 2 + dotGap + maxTextW + 14)
+        : padX;
 
   if (!anclado) {
     puntos.sort((a, b) => a.slot - b.slot);
@@ -603,7 +610,17 @@ async function componerPNG(
   const hSub = spec.subtitulo ? 20 : 0;
   const totalH =
     yTop + hTitulo + hSub + gapChart + Hc + gapPie + spec.pie.length * 16 + yBottom;
-  const totalW = W + gutter;
+  // El lienzo debe caber también el texto (título/subtítulo/pie pueden ser más
+  // anchos que el gráfico), no solo el gráfico + gutter de etiquetas.
+  medidor.font = `600 18px ${FONT}`;
+  let anchoTexto = spec.titulo ? medidor.measureText(spec.titulo).width : 0;
+  medidor.font = `14px ${FONT}`;
+  if (spec.subtitulo)
+    anchoTexto = Math.max(anchoTexto, medidor.measureText(spec.subtitulo).width);
+  medidor.font = `11px ${FONT}`;
+  for (const linea of spec.pie)
+    anchoTexto = Math.max(anchoTexto, medidor.measureText(linea).width);
+  const totalW = Math.max(W + gutter, Math.ceil(padX * 2 + anchoTexto));
 
   const canvas = document.createElement("canvas");
   canvas.width = totalW * escala;
@@ -635,26 +652,31 @@ async function componerPNG(
   if (anclado) {
     dibujarFijado(ctx, anclado, yChart, W, Hc, c, FONT, resaltado);
   } else {
-    const dotX = W + 8;
-    const textX = dotX + dotR * 2 + dotGap;
     ctx.font = `${fontSize}px ${FONT}`;
     ctx.textBaseline = "middle";
     for (const p of puntos) {
-      const my = yChart + p.slot + fontSize / 2;
-      ctx.strokeStyle = p.color;
-      ctx.globalAlpha = 0.55;
-      ctx.lineWidth = 1;
-      ctx.beginPath();
-      ctx.moveTo(p.ex, yChart + p.ey);
-      ctx.lineTo(dotX, my);
-      ctx.stroke();
-      ctx.globalAlpha = 1;
+      // Resaltado: la etiqueta se ancla al final de su propia línea (sin guía
+      // que cruce el espacio vacío). Normal: apilada en el margen derecho con
+      // una guía de color hasta su línea.
+      const dotCx = resaltado != null ? p.ex + 6 : W + 8;
+      const my =
+        resaltado != null ? yChart + p.ey : yChart + p.slot + fontSize / 2;
+      if (resaltado == null) {
+        ctx.strokeStyle = p.color;
+        ctx.globalAlpha = 0.55;
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(p.ex, yChart + p.ey);
+        ctx.lineTo(dotCx, my);
+        ctx.stroke();
+        ctx.globalAlpha = 1;
+      }
       ctx.fillStyle = p.color;
       ctx.beginPath();
-      ctx.arc(dotX + dotR, my, dotR, 0, Math.PI * 2);
+      ctx.arc(dotCx + dotR, my, dotR, 0, Math.PI * 2);
       ctx.fill();
       ctx.fillStyle = c.ink;
-      ctx.fillText(p.texto, textX, my);
+      ctx.fillText(p.texto, dotCx + dotR * 2 + dotGap, my);
     }
     ctx.textBaseline = "top";
   }
