@@ -9,6 +9,10 @@ imagen (PNG)** con etiquetas directas. Sitio
 estático que se **actualiza a diario** desde los datos abiertos del DEIS (Ministerio
 de Salud).
 
+**[▶ Ver el visor en vivo](https://paulovillarroel.github.io/atenciones-urgencia/)**
+
+![Visor de atenciones de urgencia respiratorias en Chile — comparación por años](docs/captura.png)
+
 - **Fuente:** [Atenciones de urgencia – causas respiratorias](https://datos.gob.cl/dataset/atenciones-de-urgencia-causas-respiratorias) (datos.gob.cl / DEIS).
 - **Gráfico:** eje X = semana epidemiológica, eje Y = volumen de atenciones; una línea por cada valor de la dimensión que elijas comparar.
 - **Stack:** Next.js 16 (export estático) · React 19 · Tailwind v4 · Observable Plot · DuckDB (pipeline).
