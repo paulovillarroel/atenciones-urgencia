@@ -208,9 +208,17 @@ export const Grafico = forwardRef<GraficoHandle, GraficoProps>(function Grafico(
       );
       const techo = techoAgradable(maxValor);
 
-      const ticksX = [1, 10, 20, 30, 40, 50, maxSemana].filter(
-        (t, i, a) => t <= maxSemana && a.indexOf(t) === i,
-      );
+      // Ticks del eje X según el ancho: menos ticks en móvil y se descarta el
+      // penúltimo si queda tan cerca del último que las etiquetas se solaparían
+      // (p. ej. "50" y "53" en pantallas angostas).
+      const pxPorSemana =
+        (ancho - MARGENES.left - MARGENES.right) / Math.max(1, maxSemana - 1);
+      const sepMin = Math.max(2, Math.ceil(22 / Math.max(1, pxPorSemana)));
+      const baseTicks = ancho < 520 ? [1, 20, 40] : [1, 10, 20, 30, 40, 50];
+      const ticksX = [
+        ...baseTicks.filter((t) => t < maxSemana && maxSemana - t >= sepMin),
+        maxSemana,
+      ];
 
       const lineas = series.map((s) =>
         Plot.line(s.puntos, {
