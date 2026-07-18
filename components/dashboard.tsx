@@ -24,6 +24,7 @@ import {
   pluralDe,
 } from "@/lib/comparar";
 import { fmt, fmtTasa } from "@/lib/format";
+import { filtrosDesdeParams, paramsDeFiltros } from "@/lib/estado-url";
 import { useTema } from "./use-tema";
 import { BotonTema } from "./boton-tema";
 import { PanelFiltros } from "./filtros";
@@ -60,18 +61,10 @@ export function Dashboard() {
     cargarBase(ac.signal)
       .then((b) => {
         setBase(b);
-        setFiltros({
-          comparar: "anio",
-          multi: b.meta.anios.slice(-5),
-          anio: b.meta.anioActual,
-          causa: 3,
-          region: null,
-          servicio: null,
-          establecimiento: null,
-          comuna: null,
-          edad: "total",
-          tasa: false,
-        });
+        // Estado inicial desde la URL (vista compartida) o el por defecto.
+        setFiltros(
+          filtrosDesdeParams(new URLSearchParams(window.location.search), b),
+        );
       })
       .catch((e: unknown) => {
         if (e instanceof Error && e.name === "AbortError") return;
@@ -83,6 +76,18 @@ export function Dashboard() {
       .catch(() => {});
     return () => ac.abort();
   }, []);
+
+  // Refleja el estado en la URL (para compartir/guardar la vista). replaceState
+  // para no llenar el historial en cada ajuste de filtro.
+  useEffect(() => {
+    if (!base || !filtros) return;
+    const qs = paramsDeFiltros(filtros, base).toString();
+    window.history.replaceState(
+      null,
+      "",
+      window.location.pathname + (qs ? `?${qs}` : ""),
+    );
+  }, [base, filtros]);
 
   // Consulta a DuckDB-WASM cuando la vista requiere el parquet de detalle.
   useEffect(() => {
