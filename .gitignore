@@ -17,6 +17,9 @@
 /.next/
 /out/
 
+# datos generados por el pipeline (se regeneran con `npm run data` y en CI)
+/public/data/
+
 # production
 /build
 
