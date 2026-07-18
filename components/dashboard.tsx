@@ -22,6 +22,8 @@ const AUTOR = "Paulo Villarroel Tapia";
 const LINKEDIN = "https://www.linkedin.com/in/paulovillarroel/";
 // Ajusta si el repositorio queda con otro nombre/usuario en GitHub.
 const REPO = "https://github.com/paulovillarroel/atenciones-urgencia";
+const ISP_URL =
+  "https://www.ispch.gob.cl/biomedico/vigilancia-de-laboratorio/ambitos-de-vigilancia/vigilancia-virus-respiratorios/informes-virus-respiratorios/";
 
 const fechaLarga = new Intl.DateTimeFormat("es-CL", {
   day: "numeric",
@@ -315,6 +317,18 @@ export function Dashboard() {
             className="inline-flex items-center gap-1 text-ink-2 underline-offset-2 hover:text-ink hover:underline"
           >
             Código en GitHub
+            <ExternalLink size={11} aria-hidden />
+          </a>
+        </p>
+        <p>
+          Referencia:{" "}
+          <a
+            href={ISP_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1 text-ink-2 underline-offset-2 hover:text-ink hover:underline"
+          >
+            Informes de circulación de virus respiratorios (ISP)
             <ExternalLink size={11} aria-hidden />
           </a>
         </p>

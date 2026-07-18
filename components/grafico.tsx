@@ -29,7 +29,13 @@ interface Etiqueta {
 interface AncladoExport {
   semana: number;
   ex: number;
-  items: { label: string; color: string; valorStr: string; esActual: boolean }[];
+  items: {
+    label: string;
+    color: string;
+    valorStr: string;
+    esActual: boolean;
+    ey: number; // y del punto sobre su línea (px del gráfico)
+  }[];
 }
 export interface GraficoHandle {
   exportarPNG: (spec: ExportSpec) => void;
@@ -158,6 +164,7 @@ export const Grafico = forwardRef<GraficoHandle, GraficoProps>(function Grafico(
               color: i.color,
               valorStr: fmtVal(i.valor),
               esActual: i.esActual,
+              ey: i.y,
             })),
           }
         : null;
@@ -592,6 +599,19 @@ function dibujarFijado(
   ctx.moveTo(anclado.ex, yChart);
   ctx.lineTo(anclado.ex, yChart + Hc);
   ctx.stroke();
+
+  // Puntos de color sobre cada línea (con anillo del color de superficie).
+  for (const it of anclado.items) {
+    const dy = yChart + it.ey;
+    ctx.beginPath();
+    ctx.arc(anclado.ex, dy, 5.5, 0, Math.PI * 2);
+    ctx.fillStyle = c.surface;
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(anclado.ex, dy, 4, 0, Math.PI * 2);
+    ctx.fillStyle = it.color;
+    ctx.fill();
+  }
 
   const pad = 10;
   const n = anclado.items.length;
