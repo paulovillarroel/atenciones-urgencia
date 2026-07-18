@@ -108,7 +108,9 @@ export function PanelFiltros({
       : opcionesDe(comparar, lookups, meta);
 
   return (
-    <div className="flex flex-col gap-4">
+    // @container: los grids internos se adaptan al ancho del panel (angosto en
+    // el sidebar de desktop, ancho cuando va apilado en móvil/tablet).
+    <div className="@container flex flex-col gap-4">
       {/* Comparar por */}
       <div className="flex flex-col gap-1.5">
         <span className="flex items-center gap-1.5 text-xs font-medium text-ink-2">
@@ -171,7 +173,7 @@ export function PanelFiltros({
       )}
 
       {/* Contexto (dimensiones fijas) */}
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid grid-cols-1 gap-3 @lg:grid-cols-2 @2xl:grid-cols-3 @4xl:grid-cols-4">
         {comparar !== "anio" && (
           <Campo label="Año" icon={<Calendar {...iconAttrs} />}>
             <select
@@ -271,7 +273,7 @@ export function PanelFiltros({
 
       {/* Contexto fino: establecimiento y comuna por búsqueda de texto */}
       {detalle && (
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <div className="grid grid-cols-1 gap-3 @lg:grid-cols-2">
           {comparar !== "establecimiento" && (
             <Campo label="Establecimiento" icon={<Hospital {...iconAttrs} />}>
               <BuscadorUno
@@ -372,7 +374,7 @@ function MultiSeleccion({
 
   return (
     <div className="flex flex-col gap-1.5">
-      <div className="flex items-center justify-between gap-3">
+      <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
         <span className="text-xs font-medium text-ink-2">{titulo}</span>
         <div className="flex items-center gap-3">
           {quick && (

@@ -301,7 +301,8 @@ export function Dashboard() {
         <BotonTema />
       </header>
 
-      <section className="mb-5 rounded-xl border border-line bg-surface p-4 sm:p-5">
+      <div className="flex flex-col gap-5 lg:grid lg:grid-cols-[340px_minmax(0,1fr)] lg:items-start">
+      <section className="rounded-xl border border-line bg-surface p-4 sm:p-5">
         <PanelFiltros
           lookups={lookups}
           meta={meta}
@@ -381,6 +382,7 @@ export function Dashboard() {
           COVID-19 se contabiliza aparte.
         </p>
       </section>
+      </div>
 
       <footer className="mt-6 flex flex-col gap-1 text-xs text-muted">
         <p>
@@ -442,7 +444,7 @@ export function Dashboard() {
 
 function Marco({ children }: { children: React.ReactNode }) {
   return (
-    <main className="mx-auto w-full max-w-5xl px-4 py-6 sm:px-6 sm:py-10">
+    <main className="mx-auto w-full max-w-5xl px-4 py-6 sm:px-6 sm:py-10 lg:max-w-6xl xl:max-w-7xl">
       {children}
     </main>
   );
