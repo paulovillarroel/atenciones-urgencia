@@ -16,7 +16,15 @@ export const DIMENSIONES: {
   { key: "edad", label: "Grupo etario", plural: "Grupos etarios" },
   { key: "region", label: "Región", plural: "Regiones" },
   { key: "servicio", label: "Servicio de salud", plural: "Servicios" },
+  { key: "establecimiento", label: "Establecimiento", plural: "Establecimientos" },
+  { key: "comuna", label: "Comuna", plural: "Comunas" },
 ];
+
+// Nombres de establecimiento/comuna (código -> nombre) para etiquetas.
+export interface NombresDetalle {
+  establecimiento: Map<string, string>;
+  comuna: Map<string, string>;
+}
 
 export function pluralDe(dim: Dimension): string {
   return DIMENSIONES.find((d) => d.key === dim)?.plural ?? dim;
@@ -51,6 +59,9 @@ export function opcionesDe(
         clave: s.codigo,
         label: acortarServicio(s.nombre),
       }));
+    case "establecimiento":
+    case "comuna":
+      return []; // se eligen por búsqueda de texto (lookups de detalle)
   }
 }
 
@@ -60,8 +71,19 @@ export function describir(
   clave: ClaveSerie,
   lookups: Lookups,
   meta: Meta,
+  nombres?: NombresDetalle,
 ): { label: string; esActual: boolean } {
   switch (dim) {
+    case "establecimiento":
+      return {
+        label: nombres?.establecimiento.get(String(clave)) ?? String(clave),
+        esActual: false,
+      };
+    case "comuna":
+      return {
+        label: nombres?.comuna.get(String(clave)) ?? String(clave),
+        esActual: false,
+      };
     case "anio":
       return { label: String(clave), esActual: clave === meta.anioActual };
     case "causa":
@@ -109,42 +131,58 @@ export function multiPorDefecto(
       return [13, 5, 8].filter((c) => lookups.regiones.some((r) => r.codigo === c));
     case "servicio":
       return lookups.servicios.slice(0, 3).map((s) => s.codigo);
+    case "establecimiento":
+    case "comuna":
+      return []; // vacío: se agregan por búsqueda
   }
+}
+
+interface CtxFiltros {
+  comparar: Dimension;
+  anio: number;
+  causa: number;
+  region: number | null;
+  servicio: number | null;
+  establecimiento: string | null;
+  comuna: string | null;
+  edad: MetricKey;
+}
+
+// Alcance geográfico: el contexto fijo más específico (excluyendo la dim comparada).
+function alcanceGeo(
+  f: CtxFiltros,
+  lookups: Lookups,
+  nombres?: NombresDetalle,
+): string | null {
+  const c = f.comparar;
+  if (c !== "establecimiento" && f.establecimiento !== null)
+    return nombres?.establecimiento.get(f.establecimiento) ?? "Establecimiento";
+  if (c !== "comuna" && f.comuna !== null)
+    return nombres?.comuna.get(f.comuna) ?? "Comuna";
+  if (c !== "servicio" && f.servicio !== null)
+    return acortarServicio(
+      lookups.servicios.find((s) => s.codigo === f.servicio)?.nombre ?? "",
+    );
+  if (c !== "region" && f.region !== null)
+    return lookups.regiones.find((r) => r.codigo === f.region)?.nombre ?? "";
+  if (c === "anio" || c === "causa" || c === "edad") return "Todo Chile";
+  return null;
 }
 
 // Resumen de contexto (dimensiones fijas) para mostrar bajo el título.
 export function contexto(
-  filtros: {
-    comparar: Dimension;
-    anio: number;
-    causa: number;
-    region: number | null;
-    servicio: number | null;
-    edad: MetricKey;
-  },
+  f: CtxFiltros,
   lookups: Lookups,
   meta: Meta,
+  nombres?: NombresDetalle,
 ): string[] {
   const p: string[] = [];
-  if (filtros.comparar !== "anio") p.push(String(filtros.anio));
-  if (filtros.comparar !== "causa")
-    p.push(lookups.causas.find((c) => c.orden === filtros.causa)?.label ?? "");
-  if (filtros.comparar !== "edad")
-    p.push(meta.gruposEtarios.find((g) => g.key === filtros.edad)?.label ?? "");
-  // Alcance geográfico (región/servicio) cuando aplica.
-  if (filtros.comparar !== "region" && filtros.comparar !== "servicio") {
-    if (filtros.servicio !== null)
-      p.push(
-        acortarServicio(
-          lookups.servicios.find((s) => s.codigo === filtros.servicio)?.nombre ??
-            "",
-        ),
-      );
-    else if (filtros.region !== null)
-      p.push(lookups.regiones.find((r) => r.codigo === filtros.region)?.nombre ?? "");
-    else p.push("Todo Chile");
-  } else if (filtros.comparar === "servicio" && filtros.region !== null) {
-    p.push(lookups.regiones.find((r) => r.codigo === filtros.region)?.nombre ?? "");
-  }
+  if (f.comparar !== "anio") p.push(String(f.anio));
+  if (f.comparar !== "causa")
+    p.push(lookups.causas.find((c) => c.orden === f.causa)?.label ?? "");
+  if (f.comparar !== "edad")
+    p.push(meta.gruposEtarios.find((g) => g.key === f.edad)?.label ?? "");
+  const g = alcanceGeo(f, lookups, nombres);
+  if (g) p.push(g);
   return p.filter(Boolean);
 }

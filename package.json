@@ -10,6 +10,7 @@
     "data": "node scripts/build-data.mjs"
   },
   "dependencies": {
+    "@duckdb/duckdb-wasm": "^1.33.1-dev57.0",
     "@observablehq/plot": "^0.6.17",
     "lucide-react": "^1.25.0",
     "next": "16.2.10",

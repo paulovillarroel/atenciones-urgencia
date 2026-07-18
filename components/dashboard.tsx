@@ -2,13 +2,24 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Download, ExternalLink, LineChart } from "lucide-react";
-import type { BaseDatos, ClaveSerie, Dimension, Filtros, Serie } from "@/lib/types";
+import type {
+  BaseDatos,
+  ClaveSerie,
+  DetalleLookups,
+  Dimension,
+  Filtros,
+  PuntoSemana,
+  Serie,
+} from "@/lib/types";
+import { DIMENSIONES_DETALLE } from "@/lib/types";
 import { cargarBase, calcularSeries } from "@/lib/data";
+import { cargarDetalleLookups, consultarSeries, usaDetalle } from "@/lib/detalle";
 import { mapaColoresComparar } from "@/lib/colores";
 import {
   contexto,
   describir,
   multiPorDefecto,
+  type NombresDetalle,
   opcionesDe,
   pluralDe,
 } from "@/lib/comparar";
@@ -34,8 +45,14 @@ const fechaLarga = new Intl.DateTimeFormat("es-CL", {
 export function Dashboard() {
   const tema = useTema();
   const [base, setBase] = useState<BaseDatos | null>(null);
+  const [detLk, setDetLk] = useState<DetalleLookups | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [filtros, setFiltros] = useState<Filtros | null>(null);
+  const [seriesDuck, setSeriesDuck] = useState<
+    { clave: ClaveSerie; puntos: PuntoSemana[] }[]
+  >([]);
+  const [cargandoDuck, setCargandoDuck] = useState(false);
+  const [errorDuck, setErrorDuck] = useState<string | null>(null);
   const graficoRef = useRef<GraficoHandle>(null);
 
   useEffect(() => {
@@ -50,6 +67,8 @@ export function Dashboard() {
           causa: 3,
           region: null,
           servicio: null,
+          establecimiento: null,
+          comuna: null,
           edad: "total",
           tasa: false,
         });
@@ -58,29 +77,65 @@ export function Dashboard() {
         if (e instanceof Error && e.name === "AbortError") return;
         setError(e instanceof Error ? e.message : String(e));
       });
+    // Lookups de detalle (livianos) para la búsqueda por texto.
+    cargarDetalleLookups(ac.signal)
+      .then(setDetLk)
+      .catch(() => {});
     return () => ac.abort();
   }, []);
 
+  // Consulta a DuckDB-WASM cuando la vista requiere el parquet de detalle.
+  useEffect(() => {
+    if (!filtros || !usaDetalle(filtros)) return;
+    let cancel = false;
+    // Indicador de carga antes de la consulta asíncrona a DuckDB.
+    /* eslint-disable react-hooks/set-state-in-effect */
+    setCargandoDuck(true);
+    setErrorDuck(null);
+    /* eslint-enable react-hooks/set-state-in-effect */
+    consultarSeries(filtros)
+      .then((r) => {
+        if (!cancel) {
+          setSeriesDuck(r);
+          setCargandoDuck(false);
+        }
+      })
+      .catch((e: unknown) => {
+        if (!cancel) {
+          setErrorDuck(e instanceof Error ? e.message : String(e));
+          setCargandoDuck(false);
+        }
+      });
+    return () => {
+      cancel = true;
+    };
+  }, [filtros]);
+
+  const nombresDetalle: NombresDetalle = useMemo(
+    () => ({
+      establecimiento: new Map(
+        (detLk?.establecimientos ?? []).map((e) => [e.codigo, e.nombre]),
+      ),
+      comuna: new Map((detLk?.comunas ?? []).map((c) => [c.codigo, c.nombre])),
+    }),
+    [detLk],
+  );
+
   const colores = useMemo(() => {
     if (!base || !filtros) return new Map<ClaveSerie, string>();
-    const orden = opcionesDe(filtros.comparar, base.lookups, base.meta).map(
-      (o) => o.clave,
-    );
+    const orden = DIMENSIONES_DETALLE.includes(filtros.comparar)
+      ? filtros.multi
+      : opcionesDe(filtros.comparar, base.lookups, base.meta).map((o) => o.clave);
     return mapaColoresComparar(filtros.comparar, filtros.multi, orden, tema);
   }, [base, filtros, tema]);
 
-  const series: Serie[] = useMemo(() => {
-    if (!base || !filtros) return [];
-    return calcularSeries(base.datos, filtros).map((s) => {
-      const { label, esActual } = describir(
-        filtros.comparar,
-        s.clave,
-        base.lookups,
-        base.meta,
-      );
-      return { clave: s.clave, label, esActual, puntos: s.puntos };
-    });
-  }, [base, filtros]);
+  const crudasJS = useMemo(
+    () =>
+      base && filtros && !usaDetalle(filtros)
+        ? calcularSeries(base.datos, filtros)
+        : [],
+    [base, filtros],
+  );
 
   if (error) {
     return (
@@ -102,7 +157,19 @@ export function Dashboard() {
   }
 
   const { lookups, meta } = base;
-  const ctx = contexto(filtros, lookups, meta);
+  const detalleActivo = usaDetalle(filtros);
+  const crudas = detalleActivo ? seriesDuck : crudasJS;
+  const series: Serie[] = crudas.map((s) => {
+    const { label, esActual } = describir(
+      filtros.comparar,
+      s.clave,
+      lookups,
+      meta,
+      nombresDetalle,
+    );
+    return { clave: s.clave, label, esActual, puntos: s.puntos };
+  });
+  const ctx = contexto(filtros, lookups, meta, nombresDetalle);
 
   // Tasa por 100.000 hab. al comparar años, regiones o servicios. El denominador
   // se ajusta a la banda etaria elegida y al área geográfica del contexto:
@@ -123,9 +190,11 @@ export function Dashboard() {
     return P.national?.[band]?.[y];
   };
   const tasaAplica =
-    filtros.comparar === "anio" ||
-    filtros.comparar === "region" ||
-    filtros.comparar === "servicio";
+    filtros.establecimiento === null &&
+    filtros.comuna === null &&
+    (filtros.comparar === "anio" ||
+      filtros.comparar === "region" ||
+      filtros.comparar === "servicio");
   const esTasa = filtros.tasa && tasaAplica;
   const seriesVista: Serie[] = esTasa
     ? series.map((s) => {
@@ -230,6 +299,7 @@ export function Dashboard() {
           meta={meta}
           filtros={filtros}
           colores={colores}
+          detalle={detLk}
           onCambio={cambiar}
           onComparar={cambiarComparar}
         />
@@ -266,6 +336,18 @@ export function Dashboard() {
               {fmt(acumuladoActual)}
             </span>{" "}
             atenciones
+          </p>
+        )}
+
+        {detalleActivo && errorDuck && (
+          <p className="mb-4 text-sm text-ink-2">
+            No se pudo consultar el detalle: {errorDuck}. Requiere conexión para
+            cargar el motor de consultas (DuckDB-WASM).
+          </p>
+        )}
+        {detalleActivo && cargandoDuck && filtros.multi.length > 0 && (
+          <p className="mb-4 text-sm text-muted">
+            Consultando datos de detalle en el navegador…
           </p>
         )}
 

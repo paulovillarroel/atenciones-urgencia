@@ -75,12 +75,42 @@ export interface BaseDatos {
   meta: Meta;
 }
 
-// Dimensión por la que se comparan las líneas del gráfico.
-export type Dimension = "anio" | "causa" | "edad" | "region" | "servicio";
+// Lookups de detalle (para búsqueda por texto de establecimiento/comuna).
+export interface EstablecimientoLk {
+  codigo: string;
+  nombre: string;
+  comuna: string;
+  region: number;
+  servicio: number;
+}
+export interface ComunaLk {
+  codigo: string;
+  nombre: string;
+  region: number;
+  servicio: number;
+}
+export interface DetalleLookups {
+  establecimientos: EstablecimientoLk[];
+  comunas: ComunaLk[];
+}
 
-// Clave de una serie (valor de la dimensión comparada): código numérico
-// (año, causa, región, servicio) o clave de grupo etario (string).
-export type ClaveSerie = number | MetricKey;
+// Dimensión por la que se comparan las líneas del gráfico. Establecimiento y
+// comuna son de grano fino (cientos): se resuelven con DuckDB-WASM.
+export type Dimension =
+  | "anio"
+  | "causa"
+  | "edad"
+  | "region"
+  | "servicio"
+  | "establecimiento"
+  | "comuna";
+
+// Clave de una serie: número (año/causa/región/servicio), clave de grupo etario
+// o código string (establecimiento/comuna).
+export type ClaveSerie = number | string;
+
+// Dimensiones de grano fino que requieren DuckDB-WASM (parquet de detalle).
+export const DIMENSIONES_DETALLE: Dimension[] = ["establecimiento", "comuna"];
 
 // Estado de filtros de la interfaz.
 export interface Filtros {
@@ -91,8 +121,10 @@ export interface Filtros {
   causa: number; // OrdenCausa
   region: number | null; // null = todas las regiones
   servicio: number | null; // null = todos los servicios
+  establecimiento: string | null; // código, null = todos
+  comuna: string | null; // código, null = todas
   edad: MetricKey; // grupo etario
-  tasa: boolean; // solo al comparar por región: tasa por 100.000 hab.
+  tasa: boolean; // tasa por 100.000 hab. (año/región/servicio)
 }
 
 // Serie (una línea) para el gráfico.

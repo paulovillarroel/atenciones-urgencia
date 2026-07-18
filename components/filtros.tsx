@@ -5,24 +5,29 @@ import {
   Building2,
   Calendar,
   GitCompare,
+  Hospital,
   MapPin,
+  MapPinned,
   Percent,
   Users,
 } from "lucide-react";
 import type {
   ClaveSerie,
+  DetalleLookups,
   Dimension,
   Filtros,
   Lookups,
   Meta,
 } from "@/lib/types";
 import { acortarServicio, DIMENSIONES, opcionesDe, pluralDe } from "@/lib/comparar";
+import { BuscadorMulti, BuscadorUno } from "./buscador";
 
 interface FiltrosProps {
   lookups: Lookups;
   meta: Meta;
   filtros: Filtros;
   colores: Map<ClaveSerie, string>;
+  detalle: DetalleLookups | null;
   onCambio: (parcial: Partial<Filtros>) => void;
   onComparar: (dim: Dimension) => void;
 }
@@ -55,18 +60,37 @@ export function PanelFiltros({
   meta,
   filtros,
   colores,
+  detalle,
   onCambio,
   onComparar,
 }: FiltrosProps) {
   const { comparar } = filtros;
   const iconAttrs = { size: 14, className: "text-muted", "aria-hidden": true };
 
+  const esDetalle = comparar === "establecimiento" || comparar === "comuna";
   const mostrarRegion = comparar !== "region";
   const mostrarServicio = comparar !== "servicio" && comparar !== "region";
   const tasaDisponible =
-    comparar === "anio" ||
-    ((comparar === "region" || comparar === "servicio") &&
-      Object.keys(lookups.poblacion[comparar]).length > 0);
+    filtros.establecimiento === null &&
+    filtros.comuna === null &&
+    (comparar === "anio" ||
+      ((comparar === "region" || comparar === "servicio") &&
+        Object.keys(lookups.poblacion[comparar]).length > 0));
+
+  // Opciones de búsqueda para establecimiento/comuna (acotadas por el contexto
+  // geográfico si hay región/servicio seleccionados).
+  const nombreComuna = (c: string) =>
+    detalle?.comunas.find((x) => x.codigo === c)?.nombre ?? c;
+  const opcEstab = (detalle?.establecimientos ?? [])
+    .filter(
+      (e) =>
+        (filtros.region === null || e.region === filtros.region) &&
+        (filtros.servicio === null || e.servicio === filtros.servicio),
+    )
+    .map((e) => ({ codigo: e.codigo, nombre: `${e.nombre} · ${nombreComuna(e.comuna)}` }));
+  const opcComuna = (detalle?.comunas ?? [])
+    .filter((c) => filtros.region === null || c.region === filtros.region)
+    .map((c) => ({ codigo: c.codigo, nombre: c.nombre }));
 
   const serviciosVisibles =
     filtros.region === null
@@ -243,21 +267,74 @@ export function PanelFiltros({
         )}
       </div>
 
-      {/* Dimensión comparada (multi-selección) */}
-      <MultiSeleccion
-        titulo={`${pluralDe(comparar)} a comparar`}
-        opciones={opcionesMulti}
-        seleccion={filtros.multi}
-        colores={colores}
-        anioActual={comparar === "anio" ? meta.anioActual : null}
-        reverso={comparar === "anio"}
-        quick={
-          comparar === "anio"
-            ? { label: "Últimos 5", accion: () => onCambio({ multi: meta.anios.slice(-5) }) }
-            : undefined
-        }
-        onCambio={(multi) => onCambio({ multi })}
-      />
+      {/* Contexto fino: establecimiento y comuna por búsqueda de texto */}
+      {detalle && (
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          {comparar !== "establecimiento" && (
+            <Campo label="Establecimiento" icon={<Hospital {...iconAttrs} />}>
+              <BuscadorUno
+                opciones={opcEstab}
+                valor={filtros.establecimiento}
+                onCambio={(v) => onCambio({ establecimiento: v })}
+                placeholder="buscar por nombre"
+                todos="Todos"
+              />
+            </Campo>
+          )}
+          {comparar !== "comuna" && (
+            <Campo label="Comuna" icon={<MapPinned {...iconAttrs} />}>
+              <BuscadorUno
+                opciones={opcComuna}
+                valor={filtros.comuna}
+                onCambio={(v) => onCambio({ comuna: v })}
+                placeholder="buscar por nombre"
+                todos="Todas"
+              />
+            </Campo>
+          )}
+        </div>
+      )}
+
+      {/* Dimensión comparada */}
+      {esDetalle ? (
+        <div className="flex flex-col gap-1.5">
+          <span className="text-xs font-medium text-ink-2">
+            {pluralDe(comparar)} a comparar
+          </span>
+          <BuscadorMulti
+            opciones={comparar === "establecimiento" ? opcEstab : opcComuna}
+            seleccion={filtros.multi as string[]}
+            colores={colores}
+            onCambio={(sel) => onCambio({ multi: sel })}
+            placeholder={
+              comparar === "establecimiento"
+                ? "buscar establecimiento por nombre…"
+                : "buscar comuna por nombre…"
+            }
+          />
+          {filtros.multi.length === 0 && (
+            <span className="text-xs text-muted">
+              Escribe para buscar y agregar {pluralDe(comparar).toLowerCase()} a
+              comparar.
+            </span>
+          )}
+        </div>
+      ) : (
+        <MultiSeleccion
+          titulo={`${pluralDe(comparar)} a comparar`}
+          opciones={opcionesMulti}
+          seleccion={filtros.multi}
+          colores={colores}
+          anioActual={comparar === "anio" ? meta.anioActual : null}
+          reverso={comparar === "anio"}
+          quick={
+            comparar === "anio"
+              ? { label: "Últimos 5", accion: () => onCambio({ multi: meta.anios.slice(-5) }) }
+              : undefined
+          }
+          onCambio={(multi) => onCambio({ multi })}
+        />
+      )}
     </div>
   );
 }

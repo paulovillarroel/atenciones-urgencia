@@ -106,6 +106,10 @@ async function main() {
       COALESCE(TRY_CAST(RegionCodigo AS INTEGER), ${CODIGO_SIN_INFO})        AS region,
       COALESCE(TRY_CAST(ServicioSaludCodigo AS INTEGER), ${CODIGO_SIN_INFO}) AS servicio,
       trim(ServicioSaludGlosa)                        AS servicio_glosa,
+      EstablecimientoCodigo                           AS estab,
+      trim(EstablecimientoGlosa)                      AS estab_glosa,
+      lpad(ComunaCodigo, 5, '0')                      AS comuna,
+      trim(ComunaGlosa)                               AS comuna_glosa,
       NumTotal::INTEGER                               AS total,
       NumMenor1Anio::INTEGER                          AS lt1,
       Num1a4Anios::INTEGER                            AS e1_4,
@@ -259,6 +263,60 @@ async function main() {
   await writeFile(resolve(OUT_DIR, "atenciones.json"), JSON.stringify(cols));
   await writeFile(resolve(OUT_DIR, "lookups.json"), JSON.stringify(lookups));
   await writeFile(resolve(OUT_DIR, "meta.json"), JSON.stringify(meta, null, 2));
+
+  // Detalle a nivel establecimiento/comuna para consultas en el navegador
+  // (DuckDB-WASM): parquet compacto (solo atenciones, sin la semana incompleta).
+  console.log("Escribiendo detalle.parquet (establecimiento/comuna)…");
+  await conn.run(`
+    COPY (
+      SELECT estab AS establecimiento, estab_glosa AS establecimiento_glosa,
+             comuna, comuna_glosa, region, servicio, anio, semana,
+             orden AS causa, total, lt1, e1_4, e5_14, e15_64, e65
+      FROM raw
+      WHERE NOT (anio = ${anioActual} AND semana >= ${semanaCorte})
+      ORDER BY comuna, establecimiento
+    ) TO '${resolve(OUT_DIR, "detalle.parquet")}' (FORMAT parquet, COMPRESSION zstd);
+  `);
+
+  const establecimientos = (
+    await conn.runAndReadAll(`
+      SELECT estab AS codigo, mode(estab_glosa) AS nombre, mode(comuna) AS comuna,
+             mode(region) AS region, mode(servicio) AS servicio
+      FROM raw WHERE estab IS NOT NULL GROUP BY estab ORDER BY nombre
+    `)
+  )
+    .getRowObjects()
+    .map((r) => ({
+      codigo: r.codigo,
+      nombre: r.nombre,
+      comuna: r.comuna,
+      region: num(r.region),
+      servicio: num(r.servicio),
+    }));
+
+  const comunasDetalle = (
+    await conn.runAndReadAll(`
+      SELECT comuna AS codigo, mode(comuna_glosa) AS nombre,
+             mode(region) AS region, mode(servicio) AS servicio
+      FROM raw WHERE comuna IS NOT NULL GROUP BY comuna ORDER BY nombre
+    `)
+  )
+    .getRowObjects()
+    .map((r) => ({
+      codigo: r.codigo,
+      nombre: r.nombre,
+      region: num(r.region),
+      servicio: num(r.servicio),
+    }));
+
+  await writeFile(
+    resolve(OUT_DIR, "detalle-lookups.json"),
+    JSON.stringify({ establecimientos, comunas: comunasDetalle }),
+  );
+
+  console.log(
+    `  detalle: ${establecimientos.length} establecimientos, ${comunasDetalle.length} comunas.`,
+  );
 
   console.log(
     `Listo en ${((Date.now() - t0) / 1000).toFixed(1)}s — ` +
