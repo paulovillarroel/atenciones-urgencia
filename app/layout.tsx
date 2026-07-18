@@ -12,10 +12,38 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
+// URL pública del sitio (para las tarjetas sociales, que exigen URLs absolutas).
+// Ajustar si el repo/usuario cambia (página de proyecto: <usuario>.github.io/<repo>).
+const SITIO = "https://paulovillarroel.github.io/atenciones-urgencia";
+const DESCRIPCION =
+  "Compara atenciones y hospitalizaciones de urgencia por causas respiratorias en Chile, por semana epidemiológica: por año, región, servicio de salud, comuna, grupo etario y causa (CIE-10), con tasas por 100.000 hab. Datos abiertos del DEIS, actualizados a diario.";
+
 export const metadata: Metadata = {
+  metadataBase: new URL(SITIO),
   title: "Atenciones de urgencia respiratorias en Chile",
-  description:
-    "Visualizador de atenciones de urgencia por causas respiratorias en Chile, por semana epidemiológica. Datos abiertos del DEIS (Ministerio de Salud).",
+  description: DESCRIPCION,
+  openGraph: {
+    type: "website",
+    locale: "es_CL",
+    url: `${SITIO}/`,
+    siteName: "Atenciones de urgencia respiratorias · Chile",
+    title: "Atenciones de urgencia respiratorias en Chile",
+    description: DESCRIPCION,
+    images: [
+      {
+        url: `${SITIO}/og.png`,
+        width: 1200,
+        height: 630,
+        alt: "Visualizador de atenciones de urgencia respiratorias en Chile",
+      },
+    ],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Atenciones de urgencia respiratorias en Chile",
+    description: DESCRIPCION,
+    images: [`${SITIO}/og.png`],
+  },
 };
 
 export const viewport: Viewport = {
