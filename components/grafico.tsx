@@ -25,6 +25,12 @@ interface Etiqueta {
   ex: number;
   ey: number;
 }
+// Tooltip fijado para incluir en la exportación.
+interface AncladoExport {
+  semana: number;
+  ex: number;
+  items: { label: string; color: string; valorStr: string; esActual: boolean }[];
+}
 export interface GraficoHandle {
   exportarPNG: (spec: ExportSpec) => void;
 }
@@ -51,6 +57,12 @@ interface EstadoHover {
   items: ItemHover[];
 }
 
+interface Escalas {
+  x: { apply: (v: number) => number; invert: (v: number) => number };
+  y: { apply: (v: number) => number };
+  porSemana: Map<number, Map<ClaveSerie, number>>;
+}
+
 const MARGENES = { top: 30, right: 18, bottom: 40, left: 60 };
 
 function techoAgradable(x: number): number {
@@ -59,6 +71,21 @@ function techoAgradable(x: number): number {
   const f = x / p;
   const nf = f <= 1 ? 1 : f <= 2 ? 2 : f <= 2.5 ? 2.5 : f <= 5 ? 5 : 10;
   return nf * p;
+}
+
+// Semana más cercana a una posición horizontal (px) dentro del gráfico.
+function semanaDesdePx(px: number, esc: Escalas): number | null {
+  const cruda = esc.x.invert(px);
+  let mejor = -1;
+  let dist = Infinity;
+  for (const sem of esc.porSemana.keys()) {
+    const d = Math.abs(sem - cruda);
+    if (d < dist) {
+      dist = d;
+      mejor = sem;
+    }
+  }
+  return mejor >= 0 ? mejor : null;
 }
 
 export const Grafico = forwardRef<GraficoHandle, GraficoProps>(function Grafico(
@@ -71,18 +98,45 @@ export const Grafico = forwardRef<GraficoHandle, GraficoProps>(function Grafico(
   const [ancho, setAncho] = useState(0);
   const [alto, setAlto] = useState(360);
   const [hover, setHover] = useState<EstadoHover | null>(null);
+  const [anclado, setAnclado] = useState<number | null>(null);
+  const [escalas, setEscalas] = useState<Escalas | null>(null);
 
-  const escalasRef = useRef<{
-    x: { apply: (v: number) => number; invert: (v: number) => number };
-    y: { apply: (v: number) => number };
-    porSemana: Map<number, Map<ClaveSerie, number>>;
-  } | null>(null);
+  // Estado del crosshair para una semana dada (valores de cada serie).
+  const construirEstado = useCallback(
+    (semana: number, esc: Escalas): EstadoHover | null => {
+      const perClave = esc.porSemana.get(semana);
+      if (!perClave) return null;
+      const items: ItemHover[] = series
+        .map((s) => {
+          const v = perClave.get(s.clave);
+          if (v == null) return null;
+          return {
+            clave: s.clave,
+            label: s.label,
+            esActual: s.esActual,
+            valor: v,
+            color: colores.get(s.clave) ?? CHROME[tema].muted,
+            y: esc.y.apply(v),
+          };
+        })
+        .filter((x): x is ItemHover => x !== null)
+        .sort((a, b) => b.valor - a.valor);
+      if (items.length === 0) return null;
+      return { semana, x: esc.x.apply(semana), items };
+    },
+    [series, colores, tema],
+  );
+
+  // Estado fijado (derivado): se muestra cuando el mouse no está encima.
+  const ancladoEstado =
+    anclado != null && escalas ? construirEstado(anclado, escalas) : null;
+  const mostrado = hover ?? ancladoEstado;
+  const esFijado = !hover && ancladoEstado != null;
 
   useImperativeHandle(ref, () => ({
     exportarPNG: (spec: ExportSpec) => {
       const svg = plotRef.current?.querySelector("svg");
-      const est = escalasRef.current;
-      if (!svg || !est) return;
+      if (!svg || !escalas) return;
       const etiquetas: Etiqueta[] = series
         .filter((s) => s.puntos.length > 0)
         .map((s) => {
@@ -90,11 +144,24 @@ export const Grafico = forwardRef<GraficoHandle, GraficoProps>(function Grafico(
           return {
             label: s.label + (s.esActual ? " (en curso)" : ""),
             color: colores.get(s.clave) ?? CHROME[tema].muted,
-            ex: est.x.apply(u.semana),
-            ey: est.y.apply(u.valor),
+            ex: escalas.x.apply(u.semana),
+            ey: escalas.y.apply(u.valor),
           };
         });
-      componerPNG(svg, spec, etiquetas, tema).catch((e) =>
+      const est = anclado != null ? construirEstado(anclado, escalas) : null;
+      const anc: AncladoExport | null = est
+        ? {
+            semana: est.semana,
+            ex: est.x,
+            items: est.items.map((i) => ({
+              label: i.label + (i.esActual ? " (en curso)" : ""),
+              color: i.color,
+              valorStr: fmtVal(i.valor),
+              esActual: i.esActual,
+            })),
+          }
+        : null;
+      componerPNG(svg, spec, etiquetas, anc, tema).catch((e) =>
         console.error("Exportación PNG falló:", e),
       );
     },
@@ -210,7 +277,7 @@ export const Grafico = forwardRef<GraficoHandle, GraficoProps>(function Grafico(
           porSemana.get(p.semana)!.set(s.clave, p.valor);
         }
       }
-      escalasRef.current = { x: xs, y: ys, porSemana };
+      setEscalas({ x: xs, y: ys, porSemana });
     })();
 
     return () => {
@@ -220,52 +287,31 @@ export const Grafico = forwardRef<GraficoHandle, GraficoProps>(function Grafico(
 
   const onMove = useCallback(
     (ev: React.MouseEvent<HTMLDivElement>) => {
-      const est = escalasRef.current;
       const el = plotRef.current;
-      if (!est || !el) return;
+      if (!escalas || !el) return;
       const rect = el.getBoundingClientRect();
       const px = ev.clientX - rect.left;
       if (px < MARGENES.left || px > rect.width - MARGENES.right) {
         setHover(null);
         return;
       }
-      const semanaCruda = est.x.invert(px);
-      let mejor = -1;
-      let dist = Infinity;
-      for (const sem of est.porSemana.keys()) {
-        const d = Math.abs(sem - semanaCruda);
-        if (d < dist) {
-          dist = d;
-          mejor = sem;
-        }
-      }
-      const perClave = mejor >= 0 ? est.porSemana.get(mejor) : undefined;
-      if (!perClave) {
-        setHover(null);
-        return;
-      }
-      const items: ItemHover[] = series
-        .map((s) => {
-          const v = perClave.get(s.clave);
-          if (v == null) return null;
-          return {
-            clave: s.clave,
-            label: s.label,
-            esActual: s.esActual,
-            valor: v,
-            color: colores.get(s.clave) ?? CHROME[tema].muted,
-            y: est.y.apply(v),
-          };
-        })
-        .filter((x): x is ItemHover => x !== null)
-        .sort((a, b) => b.valor - a.valor);
-      if (items.length === 0) {
-        setHover(null);
-        return;
-      }
-      setHover({ semana: mejor, x: est.x.apply(mejor), items });
+      const wk = semanaDesdePx(px, escalas);
+      setHover(wk != null ? construirEstado(wk, escalas) : null);
     },
-    [series, colores, tema],
+    [escalas, construirEstado],
+  );
+
+  const onClick = useCallback(
+    (ev: React.MouseEvent<HTMLDivElement>) => {
+      const el = plotRef.current;
+      if (!escalas || !el) return;
+      const rect = el.getBoundingClientRect();
+      const px = ev.clientX - rect.left;
+      if (px < MARGENES.left || px > rect.width - MARGENES.right) return;
+      const wk = semanaDesdePx(px, escalas);
+      if (wk != null) setAnclado((prev) => (prev === wk ? null : wk));
+    },
+    [escalas],
   );
 
   if (!hayDatos) {
@@ -276,7 +322,7 @@ export const Grafico = forwardRef<GraficoHandle, GraficoProps>(function Grafico(
     );
   }
 
-  const cerca = hover ? hover.x > ancho * 0.62 : false;
+  const cerca = mostrado ? mostrado.x > ancho * 0.62 : false;
 
   return (
     <div ref={contRef} className="relative w-full select-none">
@@ -285,25 +331,26 @@ export const Grafico = forwardRef<GraficoHandle, GraficoProps>(function Grafico(
         onMouseMove={onMove}
         onMouseLeave={() => setHover(null)}
         onPointerMove={onMove}
-        className="w-full [&_svg]:block [&_svg]:h-auto [&_svg]:w-full"
+        onClick={onClick}
+        className="w-full cursor-crosshair [&_svg]:block [&_svg]:h-auto [&_svg]:w-full"
       />
-      {hover && (
+      {mostrado && (
         <div className="pointer-events-none absolute inset-0">
           <div
             className="absolute bg-axis"
             style={{
-              left: hover.x,
+              left: mostrado.x,
               top: MARGENES.top,
               width: 1,
               height: alto - MARGENES.top - MARGENES.bottom,
             }}
           />
-          {hover.items.map((it) => (
+          {mostrado.items.map((it) => (
             <div
               key={String(it.clave)}
               className="absolute rounded-full"
               style={{
-                left: hover.x - 4,
+                left: mostrado.x - 4,
                 top: it.y - 4,
                 width: 8,
                 height: 8,
@@ -315,18 +362,19 @@ export const Grafico = forwardRef<GraficoHandle, GraficoProps>(function Grafico(
           <div
             className="absolute w-max max-w-[240px] rounded-lg border border-line bg-surface/95 px-3 py-2 text-xs shadow-lg backdrop-blur"
             style={{
-              left: hover.x,
+              left: mostrado.x,
               top: MARGENES.top + 4,
               transform: cerca
                 ? "translateX(calc(-100% - 12px))"
                 : "translateX(12px)",
             }}
           >
-            <div className="mb-1.5 font-medium text-ink-2">
-              Semana {hover.semana}
+            <div className="mb-1.5 flex items-center gap-1.5 font-medium text-ink-2">
+              Semana {mostrado.semana}
+              {esFijado && <span className="text-muted">· fijada</span>}
             </div>
             <ul className="space-y-1">
-              {hover.items.map((it) => (
+              {mostrado.items.map((it) => (
                 <li
                   key={String(it.clave)}
                   className="flex items-center justify-between gap-3"
@@ -352,6 +400,11 @@ export const Grafico = forwardRef<GraficoHandle, GraficoProps>(function Grafico(
           </div>
         </div>
       )}
+      <p className="mt-2 text-xs text-muted">
+        {anclado != null
+          ? `Semana ${anclado} fijada — se incluye al descargar. Clic para soltar.`
+          : "Haz clic en el gráfico para fijar los valores de una semana e incluirlos en la descarga."}
+      </p>
     </div>
   );
 });
@@ -365,14 +418,15 @@ function cargarImagen(url: string): Promise<HTMLImageElement> {
   });
 }
 
-// Compone un PNG (2x) autoexplicativo: título, subtítulo (qué se compara y su
-// contexto), el gráfico con ETIQUETAS DIRECTAS de cada serie a la derecha (guía
-// de color hasta el final de su línea, con anti-solape) y un pie con fuente/autoría.
-// Las etiquetas directas evitan tener que emparejar colores con una leyenda aparte.
+// Compone un PNG (2x) autoexplicativo: título, subtítulo, gráfico y pie.
+// - Sin semana fijada: etiquetas directas de cada serie a la derecha (guía de
+//   color a su línea, anti-solape), para identificar sin emparejar colores.
+// - Con semana fijada: crosshair + caja de valores de esa semana (como el tooltip).
 async function componerPNG(
   svg: SVGSVGElement,
   spec: ExportSpec,
   etiquetas: Etiqueta[],
+  anclado: AncladoExport | null,
   tema: Tema,
 ): Promise<void> {
   const c = CHROME[tema];
@@ -382,7 +436,6 @@ async function componerPNG(
   const escala = 2;
   const padX = 24;
 
-  // Rasterizar el gráfico (con su propio fondo).
   const clone = svg.cloneNode(true) as SVGSVGElement;
   clone.setAttribute("width", String(W));
   clone.setAttribute("height", String(Hc));
@@ -397,16 +450,16 @@ async function componerPNG(
     "data:image/svg+xml;charset=utf-8," + encodeURIComponent(xml),
   );
 
-  // Etiquetas directas: fuente según cantidad; acortamos el prefijo redundante.
+  const medidor = document.createElement("canvas").getContext("2d");
+  if (!medidor) return;
+
+  // Etiquetas directas (solo si NO hay semana fijada).
   const corto = (s: string) => s.replace(/^Servicio de Salud /i, "");
   const n = etiquetas.length;
   const lineH = Math.max(11, Math.min(16, Math.floor((Hc - 8) / Math.max(1, n))));
   const fontSize = Math.max(9, Math.min(13, lineH - 3));
   const dotR = 3.5;
   const dotGap = 8;
-
-  const medidor = document.createElement("canvas").getContext("2d");
-  if (!medidor) return;
   medidor.font = `${fontSize}px ${FONT}`;
   const puntos = etiquetas.map((e) => ({
     color: e.color,
@@ -419,20 +472,25 @@ async function componerPNG(
     (m, p) => Math.max(m, medidor.measureText(p.texto).width),
     0,
   );
-  const gutter = n ? Math.ceil(8 + dotR * 2 + dotGap + maxTextW + 14) : padX;
+  const gutter = anclado
+    ? 0
+    : n
+      ? Math.ceil(8 + dotR * 2 + dotGap + maxTextW + 14)
+      : padX;
 
-  // Anti-solape: ordenar por y del extremo, empujar hacia abajo y encuadrar.
-  puntos.sort((a, b) => a.slot - b.slot);
-  let prev = -Infinity;
-  for (const p of puntos) {
-    p.slot = Math.max(p.slot, prev + lineH);
-    prev = p.slot;
-  }
-  const overflow = prev - (Hc - 4);
-  if (overflow > 0) for (const p of puntos) p.slot -= overflow;
-  if (puntos.length && puntos[0].slot < 4) {
-    const d = 4 - puntos[0].slot;
-    for (const p of puntos) p.slot += d;
+  if (!anclado) {
+    puntos.sort((a, b) => a.slot - b.slot);
+    let prev = -Infinity;
+    for (const p of puntos) {
+      p.slot = Math.max(p.slot, prev + lineH);
+      prev = p.slot;
+    }
+    const overflow = prev - (Hc - 4);
+    if (overflow > 0) for (const p of puntos) p.slot -= overflow;
+    if (puntos.length && puntos[0].slot < 4) {
+      const d = 4 - puntos[0].slot;
+      for (const p of puntos) p.slot += d;
+    }
   }
 
   const yTop = 22,
@@ -472,31 +530,34 @@ async function componerPNG(
   const yChart = y;
   ctx.drawImage(chart, 0, yChart, W, Hc);
 
-  // Etiquetas directas a la derecha, con guía a cada línea.
-  const dotX = W + 8;
-  const textX = dotX + dotR * 2 + dotGap;
-  ctx.font = `${fontSize}px ${FONT}`;
-  ctx.textBaseline = "middle";
-  for (const p of puntos) {
-    const my = yChart + p.slot + fontSize / 2;
-    ctx.strokeStyle = p.color;
-    ctx.globalAlpha = 0.55;
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.moveTo(p.ex, yChart + p.ey);
-    ctx.lineTo(dotX, my);
-    ctx.stroke();
-    ctx.globalAlpha = 1;
-    ctx.fillStyle = p.color;
-    ctx.beginPath();
-    ctx.arc(dotX + dotR, my, dotR, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.fillStyle = c.ink;
-    ctx.fillText(p.texto, textX, my);
+  if (anclado) {
+    dibujarFijado(ctx, anclado, yChart, W, Hc, c, FONT);
+  } else {
+    const dotX = W + 8;
+    const textX = dotX + dotR * 2 + dotGap;
+    ctx.font = `${fontSize}px ${FONT}`;
+    ctx.textBaseline = "middle";
+    for (const p of puntos) {
+      const my = yChart + p.slot + fontSize / 2;
+      ctx.strokeStyle = p.color;
+      ctx.globalAlpha = 0.55;
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(p.ex, yChart + p.ey);
+      ctx.lineTo(dotX, my);
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+      ctx.fillStyle = p.color;
+      ctx.beginPath();
+      ctx.arc(dotX + dotR, my, dotR, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = c.ink;
+      ctx.fillText(p.texto, textX, my);
+    }
+    ctx.textBaseline = "top";
   }
-  ctx.textBaseline = "top";
-  y = yChart + Hc + gapPie;
 
+  y = yChart + Hc + gapPie;
   ctx.font = `11px ${FONT}`;
   ctx.fillStyle = c.muted;
   for (const linea of spec.pie) {
@@ -512,4 +573,77 @@ async function componerPNG(
     enlace.click();
     URL.revokeObjectURL(enlace.href);
   }, "image/png");
+}
+
+// Dibuja el crosshair de la semana fijada y una caja con los valores.
+function dibujarFijado(
+  ctx: CanvasRenderingContext2D,
+  anclado: AncladoExport,
+  yChart: number,
+  W: number,
+  Hc: number,
+  c: { ink: string; ink2: string; muted: string; grid: string; axis: string; surface: string },
+  FONT: string,
+): void {
+  // Regla vertical.
+  ctx.strokeStyle = c.axis;
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(anclado.ex, yChart);
+  ctx.lineTo(anclado.ex, yChart + Hc);
+  ctx.stroke();
+
+  const pad = 10;
+  const n = anclado.items.length;
+  const rowH = Math.max(13, Math.min(18, Math.floor((Hc - 40) / Math.max(1, n))));
+  const fs = Math.max(10, Math.min(12, rowH - 4));
+  const headerH = 20;
+
+  ctx.font = `600 12px ${FONT}`;
+  let contW = ctx.measureText(`Semana ${anclado.semana}`).width;
+  ctx.font = `${fs}px ${FONT}`;
+  for (const it of anclado.items) {
+    const w =
+      14 + ctx.measureText(it.label).width + 18 + ctx.measureText(it.valorStr).width;
+    contW = Math.max(contW, w);
+  }
+  const boxW = Math.min(contW + pad * 2, W - 16);
+  const boxH = headerH + n * rowH + pad;
+
+  let boxX = anclado.ex + 14;
+  if (boxX + boxW > W - 6) boxX = anclado.ex - boxW - 14;
+  boxX = Math.max(6, Math.min(boxX, W - boxW - 6));
+  let boxY = yChart + 6;
+  if (boxY + boxH > yChart + Hc - 6) boxY = yChart + Hc - boxH - 6;
+  boxY = Math.max(yChart + 4, boxY);
+
+  ctx.fillStyle = c.surface;
+  ctx.strokeStyle = c.grid;
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.roundRect(boxX, boxY, boxW, boxH, 8);
+  ctx.fill();
+  ctx.stroke();
+
+  ctx.textBaseline = "top";
+  ctx.fillStyle = c.ink2;
+  ctx.font = `600 12px ${FONT}`;
+  ctx.fillText(`Semana ${anclado.semana}`, boxX + pad, boxY + pad);
+
+  let ry = boxY + pad + headerH - 4;
+  for (const it of anclado.items) {
+    ctx.fillStyle = it.color;
+    ctx.beginPath();
+    ctx.arc(boxX + pad + 4, ry + fs / 2, 4, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = c.ink;
+    ctx.font = `${fs}px ${FONT}`;
+    ctx.textAlign = "left";
+    ctx.fillText(it.label, boxX + pad + 14, ry);
+    ctx.textAlign = "right";
+    ctx.font = `600 ${fs}px ${FONT}`;
+    ctx.fillText(it.valorStr, boxX + boxW - pad, ry);
+    ctx.textAlign = "left";
+    ry += rowH;
+  }
 }

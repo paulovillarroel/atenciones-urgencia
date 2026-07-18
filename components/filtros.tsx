@@ -16,7 +16,7 @@ import type {
   Lookups,
   Meta,
 } from "@/lib/types";
-import { DIMENSIONES, opcionesDe, pluralDe } from "@/lib/comparar";
+import { acortarServicio, DIMENSIONES, opcionesDe, pluralDe } from "@/lib/comparar";
 
 interface FiltrosProps {
   lookups: Lookups;
@@ -77,7 +77,7 @@ export function PanelFiltros({
     comparar === "servicio" && filtros.region !== null
       ? lookups.servicios
           .filter((s) => s.region === filtros.region)
-          .map((s) => ({ clave: s.codigo as ClaveSerie, label: s.nombre }))
+          .map((s) => ({ clave: s.codigo as ClaveSerie, label: acortarServicio(s.nombre) }))
       : opcionesDe(comparar, lookups, meta);
 
   return (
@@ -234,7 +234,7 @@ export function PanelFiltros({
               <option value="">Todos los servicios</option>
               {serviciosVisibles.map((s) => (
                 <option key={s.codigo} value={s.codigo}>
-                  {s.nombre}
+                  {acortarServicio(s.nombre)}
                 </option>
               ))}
             </select>

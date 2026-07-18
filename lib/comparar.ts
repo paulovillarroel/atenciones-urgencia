@@ -22,6 +22,13 @@ export function pluralDe(dim: Dimension): string {
   return DIMENSIONES.find((d) => d.key === dim)?.plural ?? dim;
 }
 
+// Los nombres de servicio traen el prefijo redundante "Servicio de Salud ",
+// que alarga las etiquetas (sobre todo los "Metropolitano …"). Se acorta para
+// mostrar como serie (tooltip, leyenda, chips).
+export function acortarServicio(nombre: string): string {
+  return nombre.replace(/^Servicio de Salud /i, "");
+}
+
 // Valores posibles de una dimensión, en orden canónico.
 export function opcionesDe(
   dim: Dimension,
@@ -42,7 +49,7 @@ export function opcionesDe(
     case "servicio":
       return lookups.servicios.map((s) => ({
         clave: s.codigo,
-        label: s.nombre,
+        label: acortarServicio(s.nombre),
       }));
   }
 }
@@ -74,7 +81,10 @@ export function describir(
       };
     case "servicio":
       return {
-        label: lookups.servicios.find((s) => s.codigo === clave)?.nombre ?? String(clave),
+        label: acortarServicio(
+          lookups.servicios.find((s) => s.codigo === clave)?.nombre ??
+            String(clave),
+        ),
         esActual: false,
       };
   }
@@ -124,7 +134,12 @@ export function contexto(
   // Alcance geográfico (región/servicio) cuando aplica.
   if (filtros.comparar !== "region" && filtros.comparar !== "servicio") {
     if (filtros.servicio !== null)
-      p.push(lookups.servicios.find((s) => s.codigo === filtros.servicio)?.nombre ?? "");
+      p.push(
+        acortarServicio(
+          lookups.servicios.find((s) => s.codigo === filtros.servicio)?.nombre ??
+            "",
+        ),
+      );
     else if (filtros.region !== null)
       p.push(lookups.regiones.find((r) => r.codigo === filtros.region)?.nombre ?? "");
     else p.push("Todo Chile");
