@@ -171,10 +171,10 @@ export function Dashboard() {
   });
   const ctx = contexto(filtros, lookups, meta, nombresDetalle);
 
-  // Tasa por 100.000 hab. al comparar años, regiones o servicios. El denominador
-  // se ajusta a la banda etaria elegida y al área geográfica del contexto:
+  // Tasa por 100.000 hab. al comparar años, regiones, servicios o comunas. El
+  // denominador se ajusta a la banda etaria elegida y al área geográfica:
   // - comparar años: cada año / población del área fija (servicio > región > país).
-  // - comparar región/servicio: cada área / su propia población en el año fijo.
+  // - comparar región/servicio/comuna: cada área / su propia población en el año fijo.
   const band = filtros.edad;
   const pobDeSerie = (clave: ClaveSerie): number | undefined => {
     const P = lookups.poblacion;
@@ -182,6 +182,8 @@ export function Dashboard() {
       return P.region[String(clave)]?.[band]?.[String(filtros.anio)];
     if (filtros.comparar === "servicio")
       return P.servicio[String(clave)]?.[band]?.[String(filtros.anio)];
+    if (filtros.comparar === "comuna")
+      return detLk?.poblacionComuna[String(clave)]?.[band]?.[String(filtros.anio)];
     const y = String(clave); // comparar === "anio": la clave es el año
     if (filtros.servicio !== null)
       return P.servicio[String(filtros.servicio)]?.[band]?.[y];
@@ -194,7 +196,8 @@ export function Dashboard() {
     filtros.comuna === null &&
     (filtros.comparar === "anio" ||
       filtros.comparar === "region" ||
-      filtros.comparar === "servicio");
+      filtros.comparar === "servicio" ||
+      filtros.comparar === "comuna");
   const esTasa = filtros.tasa && tasaAplica;
   const seriesVista: Serie[] = esTasa
     ? series.map((s) => {

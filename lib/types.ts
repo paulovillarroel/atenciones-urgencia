@@ -92,6 +92,8 @@ export interface ComunaLk {
 export interface DetalleLookups {
   establecimientos: EstablecimientoLk[];
   comunas: ComunaLk[];
+  // Población por comuna (código CUT de 5 dígitos) para tasas por 100.000 hab.
+  poblacionComuna: Record<string, PoblacionBanda>;
 }
 
 // Dimensión por la que se comparan las líneas del gráfico. Establecimiento y

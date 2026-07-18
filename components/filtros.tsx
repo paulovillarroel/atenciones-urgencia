@@ -74,6 +74,8 @@ export function PanelFiltros({
     filtros.establecimiento === null &&
     filtros.comuna === null &&
     (comparar === "anio" ||
+      (comparar === "comuna" &&
+        Object.keys(detalle?.poblacionComuna ?? {}).length > 0) ||
       ((comparar === "region" || comparar === "servicio") &&
         Object.keys(lookups.poblacion[comparar]).length > 0));
 
@@ -135,7 +137,7 @@ export function PanelFiltros({
         </div>
       </div>
 
-      {/* Métrica: absoluto vs tasa (regiones o servicios, si hay población) */}
+      {/* Métrica: absoluto vs tasa (años, regiones, servicios o comunas) */}
       {tasaDisponible && (
         <div className="flex flex-col gap-1.5">
           <span className="flex items-center gap-1.5 text-xs font-medium text-ink-2">

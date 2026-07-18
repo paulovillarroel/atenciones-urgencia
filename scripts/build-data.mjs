@@ -21,6 +21,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
+  POBLACION_COMUNA,
   POBLACION_NACIONAL,
   POBLACION_REGION,
   POBLACION_SERVICIO,
@@ -309,13 +310,22 @@ async function main() {
       servicio: num(r.servicio),
     }));
 
+  // Población por comuna (INE) acotada a las comunas presentes en el detalle,
+  // para calcular tasas por 100.000 al comparar comunas. Se sirve junto con los
+  // lookups (carga diferida, solo cuando se usa el detalle).
+  const codigosComuna = new Set(comunasDetalle.map((c) => c.codigo));
+  const poblacionComuna = Object.fromEntries(
+    Object.entries(POBLACION_COMUNA).filter(([cod]) => codigosComuna.has(cod)),
+  );
+
   await writeFile(
     resolve(OUT_DIR, "detalle-lookups.json"),
-    JSON.stringify({ establecimientos, comunas: comunasDetalle }),
+    JSON.stringify({ establecimientos, comunas: comunasDetalle, poblacionComuna }),
   );
 
   console.log(
-    `  detalle: ${establecimientos.length} establecimientos, ${comunasDetalle.length} comunas.`,
+    `  detalle: ${establecimientos.length} establecimientos, ${comunasDetalle.length} comunas ` +
+      `(${Object.keys(poblacionComuna).length} con población INE).`,
   );
 
   console.log(
