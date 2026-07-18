@@ -9,6 +9,7 @@ import {
   MapPin,
   MapPinned,
   Percent,
+  Ruler,
   Users,
 } from "lucide-react";
 import type {
@@ -171,6 +172,37 @@ export function PanelFiltros({
           </div>
         </div>
       )}
+
+      {/* Escala del eje Y: lineal vs logarítmica (siempre disponible) */}
+      <div className="flex flex-col gap-1.5">
+        <span className="flex items-center gap-1.5 text-xs font-medium text-ink-2">
+          <Ruler {...iconAttrs} />
+          Escala (eje Y)
+        </span>
+        <div className="flex flex-wrap gap-1">
+          {[
+            { log: false, label: "Lineal" },
+            { log: true, label: "Logarítmica" },
+          ].map((op) => {
+            const activo = filtros.log === op.log;
+            return (
+              <button
+                key={op.label}
+                type="button"
+                onClick={() => onCambio({ log: op.log })}
+                aria-pressed={activo}
+                className={`rounded-md border px-3 py-1.5 text-sm transition-colors ${
+                  activo
+                    ? "border-accent bg-accent/10 font-medium text-ink"
+                    : "border-line text-ink-2 hover:text-ink"
+                }`}
+              >
+                {op.label}
+              </button>
+            );
+          })}
+        </div>
+      </div>
 
       {/* Contexto (dimensiones fijas) */}
       <div className="grid grid-cols-1 gap-3 @lg:grid-cols-2 @2xl:grid-cols-3 @4xl:grid-cols-4">

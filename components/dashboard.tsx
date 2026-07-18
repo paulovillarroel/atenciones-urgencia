@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Download, ExternalLink, LineChart, Loader2 } from "lucide-react";
+import { Download, ExternalLink, LineChart, Loader2, Lock } from "lucide-react";
 import type {
   BaseDatos,
   ClaveSerie,
@@ -55,7 +55,8 @@ export function Dashboard() {
   const [cargandoDuck, setCargandoDuck] = useState(false);
   const [errorDuck, setErrorDuck] = useState<string | null>(null);
   const graficoRef = useRef<GraficoHandle>(null);
-  const [resaltado, setResaltado] = useState<ClaveSerie | null>(null);
+  const [resaltadoHover, setResaltadoHover] = useState<ClaveSerie | null>(null);
+  const [resaltadoFijo, setResaltadoFijo] = useState<ClaveSerie | null>(null);
   // ¿DuckDB-WASM ya cargó al menos una vez? (para el mensaje de carga)
   const [motorListo, setMotorListo] = useState(false);
 
@@ -227,12 +228,13 @@ export function Dashboard() {
   const yLabel = esTasa ? "Atenciones por 100.000 hab." : "Atenciones";
   const formatoValor = esTasa ? fmtTasa : fmt;
 
-  const acumuladoActual =
-    filtros.comparar === "anio"
-      ? (series
-          .find((s) => s.clave === meta.anioActual)
-          ?.puntos.reduce((a, p) => a + p.valor, 0) ?? null)
-      : null;
+  // Resaltado efectivo: el hover manda; si no, el que está fijado (clic).
+  const resaltado = resaltadoHover ?? resaltadoFijo;
+
+  // Estadísticas rápidas de una serie de referencia (año en curso, o suma de
+  // las series mostradas cuando particionan y no es tasa).
+  const refStats = calcularRefStats(seriesVista, filtros.comparar, esTasa);
+  const stats = refStats ? calcularStats(refStats.puntos) : null;
 
   const cambiar = (parcial: Partial<Filtros>) =>
     setFiltros((prev) => {
@@ -286,6 +288,19 @@ export function Dashboard() {
     });
   };
 
+  const descargarCSV = () => {
+    const csv = construirCSV(seriesVista, esTasa);
+    if (!csv) return;
+    const dim = pluralDe(filtros.comparar).toLowerCase();
+    // BOM para que Excel reconozca UTF-8 (acentos en los nombres).
+    const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = `urgencias-respiratorias-por-${dim.replace(/\s+/g, "-")}${esTasa ? "-tasa" : ""}.csv`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+  };
+
   return (
     <Marco>
       <header className="mb-6 flex items-start justify-between gap-4">
@@ -333,25 +348,52 @@ export function Dashboard() {
               <p className="mt-0.5 text-sm text-ink-2">{ctx.join(" · ")}</p>
             )}
           </div>
-          <button
-            type="button"
-            onClick={exportar}
-            className="inline-flex items-center gap-1.5 rounded-md border border-line px-2.5 py-1.5 text-xs font-medium text-ink-2 transition-colors hover:text-ink"
-          >
-            <Download size={14} aria-hidden />
-            Descargar PNG
-          </button>
+          <div className="flex items-center gap-1.5">
+            <button
+              type="button"
+              onClick={exportar}
+              className="inline-flex items-center gap-1.5 rounded-md border border-line px-2.5 py-1.5 text-xs font-medium text-ink-2 transition-colors hover:text-ink"
+            >
+              <Download size={14} aria-hidden />
+              PNG
+            </button>
+            <button
+              type="button"
+              onClick={descargarCSV}
+              className="inline-flex items-center gap-1.5 rounded-md border border-line px-2.5 py-1.5 text-xs font-medium text-ink-2 transition-colors hover:text-ink"
+            >
+              <Download size={14} aria-hidden />
+              CSV
+            </button>
+          </div>
         </div>
 
-        {acumuladoActual !== null && (
-          <p className="mb-4 text-sm text-ink-2">
-            Acumulado {meta.anioActual}{" "}
-            <span className="text-muted">(sem. 1–{meta.ultimaSemana})</span>:{" "}
-            <span className="tnum font-semibold text-ink">
-              {fmt(acumuladoActual)}
-            </span>{" "}
-            atenciones
-          </p>
+        {stats && refStats && (
+          <div className="mb-4 flex flex-wrap gap-x-6 gap-y-2">
+            {!esTasa && (
+              <Stat
+                label={refStats.tituloTotal}
+                valor={fmt(stats.acumulado)}
+                sub={`sem. 1–${stats.ult.semana}`}
+              />
+            )}
+            <Stat
+              label="Semana peak"
+              valor={`Sem. ${stats.peak.semana}`}
+              sub={formatoValor(stats.peak.valor)}
+            />
+            <Stat
+              label={`Última (sem. ${stats.ult.semana})`}
+              valor={formatoValor(stats.ult.valor)}
+              sub={
+                stats.deltaPct != null
+                  ? `${stats.deltaPct >= 0 ? "↑" : "↓"} ${Math.abs(
+                      stats.deltaPct,
+                    ).toFixed(0)}% vs. previa`
+                  : undefined
+              }
+            />
+          </div>
         )}
 
         {detalleActivo && errorDuck && (
@@ -379,6 +421,7 @@ export function Dashboard() {
               yLabel={yLabel}
               formatoValor={formatoValor}
               resaltado={resaltado}
+              escalaLog={filtros.log}
             />
             {mostrarCarga && (
               <div className="pointer-events-none absolute inset-x-0 top-0 flex justify-center">
@@ -396,13 +439,15 @@ export function Dashboard() {
           colores={colores}
           reverso={filtros.comparar === "anio"}
           resaltado={resaltado}
-          onResaltar={setResaltado}
+          resaltadoFijo={resaltadoFijo}
+          onResaltar={setResaltadoHover}
+          onFijar={(c) => setResaltadoFijo((prev) => (prev === c ? null : c))}
         />
 
         {seriesVista.filter((s) => s.puntos.length > 0).length > 8 && (
           <p className="mt-2 text-xs text-muted">
             Muchas series: pasa el cursor sobre una de la leyenda para
-            resaltarla.
+            resaltarla; haz clic para fijarla e incluirla así en la descarga.
           </p>
         )}
 
@@ -473,6 +518,85 @@ export function Dashboard() {
   );
 }
 
+function Stat({
+  label,
+  valor,
+  sub,
+}: {
+  label: string;
+  valor: string;
+  sub?: string;
+}) {
+  return (
+    <div>
+      <div className="text-xs text-muted">{label}</div>
+      <div className="text-sm">
+        <span className="tnum font-semibold text-ink">{valor}</span>
+        {sub && <span className="text-muted"> · {sub}</span>}
+      </div>
+    </div>
+  );
+}
+
+// Serie de referencia para las estadísticas rápidas: el año en curso al comparar
+// años, o la suma por semana de las series mostradas (partición geográfica/etaria)
+// cuando no es tasa.
+function calcularRefStats(
+  series: Serie[],
+  comparar: Dimension,
+  esTasa: boolean,
+): { puntos: PuntoSemana[]; tituloTotal: string } | null {
+  const conDatos = series.filter((s) => s.puntos.length > 0);
+  if (conDatos.length === 0) return null;
+  if (comparar === "anio") {
+    const s = conDatos.find((x) => x.esActual) ?? conDatos[conDatos.length - 1];
+    return { puntos: s.puntos, tituloTotal: `Acumulado ${s.label}` };
+  }
+  if (esTasa) return null; // sumar tasas no tiene sentido
+  const porSem = new Map<number, number>();
+  for (const s of conDatos)
+    for (const p of s.puntos)
+      porSem.set(p.semana, (porSem.get(p.semana) ?? 0) + p.valor);
+  const puntos = [...porSem.entries()]
+    .sort((a, b) => a[0] - b[0])
+    .map(([semana, valor]) => ({ semana, valor }));
+  return { puntos, tituloTotal: "Total mostrado" };
+}
+
+function calcularStats(pts: PuntoSemana[]) {
+  if (pts.length === 0) return null;
+  const acumulado = pts.reduce((a, p) => a + p.valor, 0);
+  const peak = pts.reduce((m, p) => (p.valor > m.valor ? p : m), pts[0]);
+  const ult = pts[pts.length - 1];
+  const prev = pts.length > 1 ? pts[pts.length - 2] : null;
+  const deltaPct =
+    prev && prev.valor > 0 ? ((ult.valor - prev.valor) / prev.valor) * 100 : null;
+  return { acumulado, peak, ult, deltaPct };
+}
+
+// CSV ancho: columna `semana` + una columna por serie mostrada.
+function construirCSV(series: Serie[], esTasa: boolean): string {
+  const conDatos = series.filter((s) => s.puntos.length > 0);
+  if (conDatos.length === 0) return "";
+  const semanas = [
+    ...new Set(conDatos.flatMap((s) => s.puntos.map((p) => p.semana))),
+  ].sort((a, b) => a - b);
+  const cols = conDatos.map((s) => ({
+    label: s.label,
+    m: new Map(s.puntos.map((p) => [p.semana, p.valor])),
+  }));
+  const esc = (v: string) => `"${v.replace(/"/g, '""')}"`;
+  const cab = ["semana", ...cols.map((c) => esc(c.label))].join(",");
+  const filas = semanas.map((sem) => {
+    const celdas = cols.map((c) => {
+      const v = c.m.get(sem);
+      return v == null ? "" : esTasa ? v.toFixed(2) : String(v);
+    });
+    return [sem, ...celdas].join(",");
+  });
+  return [cab, ...filas].join("\n");
+}
+
 function CargandoGrafico({ mensaje }: { mensaje: string }) {
   return (
     <div className="flex h-[340px] flex-col items-center justify-center gap-3 rounded-lg border border-line px-6 text-center text-sm text-muted">
@@ -495,13 +619,17 @@ function Leyenda({
   colores,
   reverso,
   resaltado,
+  resaltadoFijo,
   onResaltar,
+  onFijar,
 }: {
   series: Serie[];
   colores: Map<ClaveSerie, string>;
   reverso: boolean;
   resaltado: ClaveSerie | null;
+  resaltadoFijo: ClaveSerie | null;
   onResaltar: (clave: ClaveSerie | null) => void;
+  onFijar: (clave: ClaveSerie) => void;
 }) {
   const conDatos = series.filter((s) => s.puntos.length > 0);
   if (conDatos.length < 2) return null;
@@ -510,6 +638,7 @@ function Leyenda({
     <ul className="mt-4 flex flex-wrap gap-x-1 gap-y-0.5">
       {orden.map((s) => {
         const atenuado = resaltado != null && s.clave !== resaltado;
+        const fijado = s.clave === resaltadoFijo;
         return (
           <li key={String(s.clave)}>
             <button
@@ -518,9 +647,12 @@ function Leyenda({
               onMouseLeave={() => onResaltar(null)}
               onFocus={() => onResaltar(s.clave)}
               onBlur={() => onResaltar(null)}
+              onClick={() => onFijar(s.clave)}
+              aria-pressed={fijado}
+              title={fijado ? "Fijada — clic para soltar" : "Clic para fijar"}
               className={`flex items-center gap-1.5 rounded px-1.5 py-0.5 text-sm transition-opacity hover:bg-ink/[0.04] ${
                 atenuado ? "opacity-40" : "opacity-100"
-              }`}
+              } ${fijado ? "bg-accent/10 ring-1 ring-accent/40" : ""}`}
             >
               <span
                 className="inline-block h-[3px] w-4 shrink-0 rounded-full"
@@ -535,6 +667,9 @@ function Leyenda({
                   <span className="font-normal text-muted"> (en curso)</span>
                 )}
               </span>
+              {fijado && (
+                <Lock size={11} className="shrink-0 text-accent" aria-hidden />
+              )}
             </button>
           </li>
         );

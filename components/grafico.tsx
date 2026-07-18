@@ -11,6 +11,7 @@ import {
 import type { ClaveSerie, Serie } from "@/lib/types";
 import { CHROME, type Tema } from "@/lib/colores";
 import { fmt, fmtCompacto } from "@/lib/format";
+import { Lock } from "lucide-react";
 
 export interface ExportSpec {
   titulo: string;
@@ -20,6 +21,7 @@ export interface ExportSpec {
 }
 // Etiqueta directa: nombre de la serie anclado al final de su línea (px del SVG).
 interface Etiqueta {
+  clave: ClaveSerie;
   label: string;
   color: string;
   ex: number;
@@ -30,6 +32,7 @@ interface AncladoExport {
   semana: number;
   ex: number;
   items: {
+    clave: ClaveSerie;
     label: string;
     color: string;
     valorStr: string;
@@ -48,6 +51,7 @@ interface GraficoProps {
   yLabel: string;
   formatoValor?: (n: number) => string;
   resaltado?: ClaveSerie | null; // serie a destacar (atenúa las demás)
+  escalaLog?: boolean; // eje Y en escala logarítmica
 }
 
 interface ItemHover {
@@ -96,7 +100,15 @@ function semanaDesdePx(px: number, esc: Escalas): number | null {
 }
 
 export const Grafico = forwardRef<GraficoHandle, GraficoProps>(function Grafico(
-  { series, colores, tema, yLabel, formatoValor, resaltado = null },
+  {
+    series,
+    colores,
+    tema,
+    yLabel,
+    formatoValor,
+    resaltado = null,
+    escalaLog = false,
+  },
   ref,
 ) {
   const fmtVal = formatoValor ?? fmt;
@@ -168,6 +180,7 @@ export const Grafico = forwardRef<GraficoHandle, GraficoProps>(function Grafico(
         .map((s) => {
           const u = s.puntos[s.puntos.length - 1];
           return {
+            clave: s.clave,
             label: s.label + (s.esActual ? " (en curso)" : ""),
             color: colores.get(s.clave) ?? CHROME[tema].muted,
             ex: escalas.x.apply(u.semana),
@@ -180,6 +193,7 @@ export const Grafico = forwardRef<GraficoHandle, GraficoProps>(function Grafico(
             semana: est.semana,
             ex: est.x,
             items: est.items.map((i) => ({
+              clave: i.clave,
               label: i.label + (i.esActual ? " (en curso)" : ""),
               color: i.color,
               valorStr: fmtVal(i.valor),
@@ -188,8 +202,8 @@ export const Grafico = forwardRef<GraficoHandle, GraficoProps>(function Grafico(
             })),
           }
         : null;
-      componerPNG(svg, spec, etiquetas, anc, tema).catch((e) =>
-        console.error("Exportación PNG falló:", e),
+      componerPNG(svg, spec, etiquetas, anc, tema, resaltadoRef.current).catch(
+        (e) => console.error("Exportación PNG falló:", e),
       );
     },
   }));
@@ -227,6 +241,18 @@ export const Grafico = forwardRef<GraficoHandle, GraficoProps>(function Grafico(
         ...series.flatMap((s) => s.puntos.map((p) => p.valor)),
       );
       const techo = techoAgradable(maxValor);
+
+      // Escala logarítmica (opcional): separa mejor curvas de magnitudes muy
+      // distintas. El log no admite 0, así que el piso es la potencia de 10 bajo
+      // el menor valor positivo; los valores 0 quedan como cortes en la línea.
+      const positivos = series
+        .flatMap((s) => s.puntos.map((p) => p.valor))
+        .filter((v) => v > 0);
+      const usarLog = escalaLog && positivos.length > 0;
+      const pisoLog = usarLog
+        ? Math.pow(10, Math.floor(Math.log10(Math.min(...positivos))))
+        : 0;
+      const techoLog = Math.max(techo, pisoLog * 10);
 
       // Ticks del eje X según el ancho: menos ticks en móvil y se descarta el
       // penúltimo si queda tan cerca del último que las etiquetas se solaparían
@@ -276,7 +302,9 @@ export const Grafico = forwardRef<GraficoHandle, GraficoProps>(function Grafico(
           tickPadding: 8,
         },
         y: {
-          domain: [0, techo],
+          ...(usarLog
+            ? { type: "log", domain: [pisoLog, techoLog] }
+            : { domain: [0, techo] }),
           label: `↑ ${yLabel}`,
           labelAnchor: "top",
           tickSize: 0,
@@ -285,7 +313,10 @@ export const Grafico = forwardRef<GraficoHandle, GraficoProps>(function Grafico(
           tickFormat: (d: number) => fmtCompacto(d),
         },
         marks: [
-          Plot.ruleY([0], { stroke: c.axis, strokeWidth: 1 }),
+          Plot.ruleY([usarLog ? pisoLog : 0], {
+            stroke: c.axis,
+            strokeWidth: 1,
+          }),
           ...lineas,
         ],
       });
@@ -328,7 +359,7 @@ export const Grafico = forwardRef<GraficoHandle, GraficoProps>(function Grafico(
     return () => {
       cancelado = true;
     };
-  }, [series, colores, tema, ancho, yLabel, hayDatos, aplicarResaltado]);
+  }, [series, colores, tema, ancho, yLabel, hayDatos, escalaLog, aplicarResaltado]);
 
   const onMove = useCallback(
     (ev: React.MouseEvent<HTMLDivElement>) => {
@@ -453,10 +484,18 @@ export const Grafico = forwardRef<GraficoHandle, GraficoProps>(function Grafico(
           </div>
         </div>
       )}
-      <p className="mt-2 text-xs text-muted">
-        {anclado != null
-          ? `Semana ${anclado} fijada — se incluye al descargar. Clic para soltar.`
-          : "Haz clic en el gráfico para fijar los valores de una semana e incluirlos en la descarga."}
+      <p className="mt-2 flex items-center gap-1.5 text-xs text-muted">
+        {anclado != null ? (
+          <>
+            <Lock size={12} className="shrink-0 text-accent" aria-hidden />
+            <span>
+              Semana {anclado} fijada — se incluye al descargar. Clic para
+              soltar.
+            </span>
+          </>
+        ) : (
+          "Haz clic en el gráfico para fijar los valores de una semana e incluirlos en la descarga."
+        )}
       </p>
     </div>
   );
@@ -481,6 +520,7 @@ async function componerPNG(
   etiquetas: Etiqueta[],
   anclado: AncladoExport | null,
   tema: Tema,
+  resaltado: ClaveSerie | null,
 ): Promise<void> {
   const c = CHROME[tema];
   const W = Math.round(svg.clientWidth || Number(svg.getAttribute("width")) || 900);
@@ -506,15 +546,20 @@ async function componerPNG(
   const medidor = document.createElement("canvas").getContext("2d");
   if (!medidor) return;
 
-  // Etiquetas directas (solo si NO hay semana fijada).
+  // Etiquetas directas (solo si NO hay semana fijada). Con una serie resaltada
+  // solo se rotula esa (el resto ya va atenuado en el gráfico clonado).
   const corto = (s: string) => s.replace(/^Servicio de Salud /i, "");
-  const n = etiquetas.length;
+  const etiquetasVis =
+    resaltado != null
+      ? etiquetas.filter((e) => e.clave === resaltado)
+      : etiquetas;
+  const n = etiquetasVis.length;
   const lineH = Math.max(11, Math.min(16, Math.floor((Hc - 8) / Math.max(1, n))));
   const fontSize = Math.max(9, Math.min(13, lineH - 3));
   const dotR = 3.5;
   const dotGap = 8;
   medidor.font = `${fontSize}px ${FONT}`;
-  const puntos = etiquetas.map((e) => ({
+  const puntos = etiquetasVis.map((e) => ({
     color: e.color,
     ex: e.ex,
     ey: e.ey,
@@ -584,7 +629,7 @@ async function componerPNG(
   ctx.drawImage(chart, 0, yChart, W, Hc);
 
   if (anclado) {
-    dibujarFijado(ctx, anclado, yChart, W, Hc, c, FONT);
+    dibujarFijado(ctx, anclado, yChart, W, Hc, c, FONT, resaltado);
   } else {
     const dotX = W + 8;
     const textX = dotX + dotR * 2 + dotGap;
@@ -637,7 +682,10 @@ function dibujarFijado(
   Hc: number,
   c: { ink: string; ink2: string; muted: string; grid: string; axis: string; surface: string },
   FONT: string,
+  resaltado: ClaveSerie | null,
 ): void {
+  const alfa = (clave: ClaveSerie) =>
+    resaltado == null || clave === resaltado ? 1 : 0.35;
   // Regla vertical.
   ctx.strokeStyle = c.axis;
   ctx.lineWidth = 1;
@@ -648,6 +696,7 @@ function dibujarFijado(
 
   // Puntos de color sobre cada línea (con anillo del color de superficie).
   for (const it of anclado.items) {
+    ctx.globalAlpha = alfa(it.clave);
     const dy = yChart + it.ey;
     ctx.beginPath();
     ctx.arc(anclado.ex, dy, 5.5, 0, Math.PI * 2);
@@ -658,6 +707,7 @@ function dibujarFijado(
     ctx.fillStyle = it.color;
     ctx.fill();
   }
+  ctx.globalAlpha = 1;
 
   const pad = 10;
   const n = anclado.items.length;
@@ -698,6 +748,7 @@ function dibujarFijado(
 
   let ry = boxY + pad + headerH - 4;
   for (const it of anclado.items) {
+    ctx.globalAlpha = alfa(it.clave);
     ctx.fillStyle = it.color;
     ctx.beginPath();
     ctx.arc(boxX + pad + 4, ry + fs / 2, 4, 0, Math.PI * 2);
@@ -712,4 +763,5 @@ function dibujarFijado(
     ctx.textAlign = "left";
     ry += rowH;
   }
+  ctx.globalAlpha = 1;
 }

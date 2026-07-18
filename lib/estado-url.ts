@@ -29,6 +29,7 @@ export function filtrosPorDefecto(base: BaseDatos): Filtros {
     comuna: null,
     edad: "total",
     tasa: false,
+    log: false,
   };
 }
 
@@ -117,6 +118,7 @@ export function filtrosDesdeParams(
     comuna: params.get("comuna") || null,
     edad: edadRaw && EDADES.includes(edadRaw) ? edadRaw : def.edad,
     tasa: params.get("tasa") === "1",
+    log: params.get("log") === "1",
   };
 }
 
@@ -143,6 +145,7 @@ export function paramsDeFiltros(f: Filtros, base: BaseDatos): URLSearchParams {
     p.set("estab", f.establecimiento);
   if (f.comparar !== "comuna" && f.comuna != null) p.set("comuna", f.comuna);
   if (f.tasa) p.set("tasa", "1");
+  if (f.log) p.set("log", "1");
   const defMulti = multiPorDefecto(f.comparar, base.lookups, base.meta);
   if (f.multi.length > 0 && !mismoConjunto(f.multi, defMulti))
     p.set("sel", f.multi.join(","));

@@ -127,6 +127,7 @@ export interface Filtros {
   comuna: string | null; // código, null = todas
   edad: MetricKey; // grupo etario
   tasa: boolean; // tasa por 100.000 hab. (año/región/servicio)
+  log: boolean; // eje Y en escala logarítmica
 }
 
 // Serie (una línea) para el gráfico.
