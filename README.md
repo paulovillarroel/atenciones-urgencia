@@ -3,8 +3,9 @@
 Visualizador web de las **atenciones de urgencia por causas respiratorias** en Chile,
 por semana epidemiológica. Permite **comparar por cualquier dimensión** —años, causas
 (CIE-10), grupos etarios, regiones o servicios de salud— con las demás como filtro de
-contexto, ver **tasas por 100.000 habitantes** al comparar regiones o servicios de
-salud, y **exportar el gráfico como imagen (PNG)** con etiquetas directas. Sitio
+contexto, ver **tasas por 100.000 habitantes** (al comparar años, regiones o
+servicios de salud, ajustadas por grupo etario y área), y **exportar el gráfico como
+imagen (PNG)** con etiquetas directas. Sitio
 estático que se **actualiza a diario** desde los datos abiertos del DEIS (Ministerio
 de Salud).
 
@@ -68,12 +69,15 @@ en `https://<usuario>.github.io/<repo>/`; en una página de usuario
   solo en el total nacional ("Todas"), no como opción filtrable.
 - **Grupos etarios.** El dato trae los conteos por edad en columnas anchas
   (`<1`, `1–4`, `5–14`, `15–64`, `≥65`); el filtro de grupo etario selecciona la columna.
-- **Tasas por 100.000 hab.** Al comparar regiones o servicios de salud se puede
-  cambiar de valor absoluto a tasa. El denominador es la **población territorial
+- **Tasas por 100.000 hab.** Al comparar **años, regiones o servicios de salud** se
+  puede cambiar de valor absoluto a tasa. El denominador se **ajusta al contexto**:
+  al grupo etario elegido (población por banda de edad) y al área geográfica (región
+  o servicio seleccionado, o total país al comparar años). Población **territorial
   (residente) del INE** (Estimaciones y Proyecciones 2002–2035, base Censo 2017),
-  **por año** (no un valor fijo). Para servicios se agrega la población comunal del
-  INE según el mapeo comuna→servicio del DEIS. No usa población beneficiaria FONASA
-  (no hay serie oficial limpia por servicio). La tabla vive en `scripts/poblacion.mjs`.
+  **por año** y por banda etaria (las del DEIS: `<1`, `1–4`, `5–14`, `15–64`, `≥65`).
+  Región y país se agregan directo del cuadro comunal INE; el total por servicio (que
+  no tiene serie etaria oficial) se distribuye por la estructura etaria de su región.
+  No usa población beneficiaria FONASA. La tabla vive en `scripts/poblacion.mjs`.
 
 ## Hospitalizaciones (pendiente para v2)
 

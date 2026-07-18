@@ -64,8 +64,9 @@ export function PanelFiltros({
   const mostrarRegion = comparar !== "region";
   const mostrarServicio = comparar !== "servicio" && comparar !== "region";
   const tasaDisponible =
-    (comparar === "region" || comparar === "servicio") &&
-    Object.keys(lookups.poblacion[comparar]).length > 0;
+    comparar === "anio" ||
+    ((comparar === "region" || comparar === "servicio") &&
+      Object.keys(lookups.poblacion[comparar]).length > 0);
 
   const serviciosVisibles =
     filtros.region === null

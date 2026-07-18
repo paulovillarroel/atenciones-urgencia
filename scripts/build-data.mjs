@@ -20,7 +20,11 @@ import { DuckDBInstance } from "@duckdb/node-api";
 import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { POBLACION_REGION, POBLACION_SERVICIO } from "./poblacion.mjs";
+import {
+  POBLACION_NACIONAL,
+  POBLACION_REGION,
+  POBLACION_SERVICIO,
+} from "./poblacion.mjs";
 
 const PARQUET_URL =
   "https://datos.gob.cl/dataset/606ef5bb-11d1-475b-b69f-b980da5757f4/resource/ae6c9887-106d-4e98-8875-40bf2b836041/download/at_urg_respiratorio_semanal.parquet";
@@ -246,6 +250,7 @@ async function main() {
   const poblacion = {
     region: filtrarPob(POBLACION_REGION, new Set(regiones.map((r) => r.codigo))),
     servicio: filtrarPob(POBLACION_SERVICIO, new Set(servicios.map((s) => s.codigo))),
+    national: POBLACION_NACIONAL,
   };
 
   const lookups = { regiones, servicios, causas: CAUSAS, poblacion };

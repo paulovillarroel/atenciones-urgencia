@@ -104,19 +104,32 @@ export function Dashboard() {
   const { lookups, meta } = base;
   const ctx = contexto(filtros, lookups, meta);
 
-  // Tasa por 100.000 hab. (al comparar regiones o servicios): divide cada serie
-  // por la población de su área en el año de contexto. Permite comparar áreas de
-  // distinto tamaño. Requiere que exista tabla de población para esa dimensión.
-  const dimGeo =
-    filtros.comparar === "region" || filtros.comparar === "servicio";
-  const tablaPob = dimGeo
-    ? lookups.poblacion[filtros.comparar as "region" | "servicio"]
-    : undefined;
-  const hayPoblacion = !!tablaPob && Object.keys(tablaPob).length > 0;
-  const esTasa = filtros.tasa && dimGeo && hayPoblacion;
+  // Tasa por 100.000 hab. al comparar años, regiones o servicios. El denominador
+  // se ajusta a la banda etaria elegida y al área geográfica del contexto:
+  // - comparar años: cada año / población del área fija (servicio > región > país).
+  // - comparar región/servicio: cada área / su propia población en el año fijo.
+  const band = filtros.edad;
+  const pobDeSerie = (clave: ClaveSerie): number | undefined => {
+    const P = lookups.poblacion;
+    if (filtros.comparar === "region")
+      return P.region[String(clave)]?.[band]?.[String(filtros.anio)];
+    if (filtros.comparar === "servicio")
+      return P.servicio[String(clave)]?.[band]?.[String(filtros.anio)];
+    const y = String(clave); // comparar === "anio": la clave es el año
+    if (filtros.servicio !== null)
+      return P.servicio[String(filtros.servicio)]?.[band]?.[y];
+    if (filtros.region !== null)
+      return P.region[String(filtros.region)]?.[band]?.[y];
+    return P.national?.[band]?.[y];
+  };
+  const tasaAplica =
+    filtros.comparar === "anio" ||
+    filtros.comparar === "region" ||
+    filtros.comparar === "servicio";
+  const esTasa = filtros.tasa && tasaAplica;
   const seriesVista: Serie[] = esTasa
     ? series.map((s) => {
-        const pob = tablaPob?.[String(s.clave)]?.[String(filtros.anio)];
+        const pob = pobDeSerie(s.clave);
         return pob
           ? {
               ...s,

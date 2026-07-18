@@ -22,8 +22,14 @@ export interface Region {
   nombre: string;
 }
 
-// codigo -> año -> población (para tasas por 100.000 hab.).
-export type PoblacionPorAnio = Record<string, Record<string, number>>;
+// banda etaria -> año -> población (para tasas por 100.000 hab.).
+export type PoblacionBanda = Record<string, Record<string, number>>;
+// Población por dimensión: código -> banda -> año (y nacional: banda -> año).
+export interface Poblacion {
+  region: Record<string, PoblacionBanda>;
+  servicio: Record<string, PoblacionBanda>;
+  national: PoblacionBanda;
+}
 export interface Servicio {
   codigo: number;
   nombre: string;
@@ -40,7 +46,7 @@ export interface Lookups {
   regiones: Region[];
   servicios: Servicio[];
   causas: Causa[];
-  poblacion: { region: PoblacionPorAnio; servicio: PoblacionPorAnio };
+  poblacion: Poblacion;
 }
 
 export interface GrupoEtario {
