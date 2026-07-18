@@ -20,6 +20,7 @@ import { DuckDBInstance } from "@duckdb/node-api";
 import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { POBLACION_REGION, POBLACION_SERVICIO } from "./poblacion.mjs";
 
 const PARQUET_URL =
   "https://datos.gob.cl/dataset/606ef5bb-11d1-475b-b69f-b980da5757f4/resource/ae6c9887-106d-4e98-8875-40bf2b836041/download/at_urg_respiratorio_semanal.parquet";
@@ -40,6 +41,7 @@ const GRUPOS_ETARIOS = [
 ];
 
 // Regiones de Chile ordenadas de norte a sur, con nombre limpio por codigo DPA.
+// La poblacion por anio (para tasas) vive en scripts/poblacion.mjs.
 // Evita depender de las glosas del dato (que traen mayusculas/typos inconsistentes).
 const REGIONES = [
   { codigo: 15, nombre: "Arica y Parinacota" },
@@ -236,7 +238,17 @@ async function main() {
     filasSinInfo,
   };
 
-  const lookups = { regiones, servicios, causas: CAUSAS };
+  // Poblacion por anio (solo codigos presentes) para calcular tasas.
+  const filtrarPob = (tabla, codigos) =>
+    Object.fromEntries(
+      [...codigos].map((c) => [c, tabla[c]]).filter(([, p]) => p),
+    );
+  const poblacion = {
+    region: filtrarPob(POBLACION_REGION, new Set(regiones.map((r) => r.codigo))),
+    servicio: filtrarPob(POBLACION_SERVICIO, new Set(servicios.map((s) => s.codigo))),
+  };
+
+  const lookups = { regiones, servicios, causas: CAUSAS, poblacion };
 
   await mkdir(OUT_DIR, { recursive: true });
   await writeFile(resolve(OUT_DIR, "atenciones.json"), JSON.stringify(cols));

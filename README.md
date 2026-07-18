@@ -3,8 +3,10 @@
 Visualizador web de las **atenciones de urgencia por causas respiratorias** en Chile,
 por semana epidemiológica. Permite **comparar por cualquier dimensión** —años, causas
 (CIE-10), grupos etarios, regiones o servicios de salud— con las demás como filtro de
-contexto, y **exportar el gráfico como imagen (PNG)**. Sitio estático que se
-**actualiza a diario** desde los datos abiertos del DEIS (Ministerio de Salud).
+contexto, ver **tasas por 100.000 habitantes** al comparar regiones o servicios de
+salud, y **exportar el gráfico como imagen (PNG)** con etiquetas directas. Sitio
+estático que se **actualiza a diario** desde los datos abiertos del DEIS (Ministerio
+de Salud).
 
 - **Fuente:** [Atenciones de urgencia – causas respiratorias](https://datos.gob.cl/dataset/atenciones-de-urgencia-causas-respiratorias) (datos.gob.cl / DEIS).
 - **Gráfico:** eje X = semana epidemiológica, eje Y = volumen de atenciones; una línea por cada valor de la dimensión que elijas comparar.
@@ -66,6 +68,12 @@ en `https://<usuario>.github.io/<repo>/`; en una página de usuario
   solo en el total nacional ("Todas"), no como opción filtrable.
 - **Grupos etarios.** El dato trae los conteos por edad en columnas anchas
   (`<1`, `1–4`, `5–14`, `15–64`, `≥65`); el filtro de grupo etario selecciona la columna.
+- **Tasas por 100.000 hab.** Al comparar regiones o servicios de salud se puede
+  cambiar de valor absoluto a tasa. El denominador es la **población territorial
+  (residente) del INE** (Estimaciones y Proyecciones 2002–2035, base Censo 2017),
+  **por año** (no un valor fijo). Para servicios se agrega la población comunal del
+  INE según el mapeo comuna→servicio del DEIS. No usa población beneficiaria FONASA
+  (no hay serie oficial limpia por servicio). La tabla vive en `scripts/poblacion.mjs`.
 
 ## Hospitalizaciones (pendiente para v2)
 
@@ -91,6 +99,7 @@ app/                     Next.js App Router (layout, página, estilos)
 
 ## Créditos
 
-- **Datos:** DEIS – Ministerio de Salud de Chile, publicados en datos.gob.cl.
+- **Datos de atenciones:** DEIS – Ministerio de Salud de Chile, publicados en datos.gob.cl.
+- **Población (para tasas):** INE – Estimaciones y Proyecciones de Población de Chile 2002–2035, base Censo 2017.
 - **Visualización y desarrollo:** [Paulo Villarroel Tapia](https://www.linkedin.com/in/paulovillarroel/).
 - **Inspiración metodológica:** taller de datos abiertos en R, [paulovillarroel/api-datos-gob](https://github.com/paulovillarroel/api-datos-gob).

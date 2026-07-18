@@ -21,6 +21,9 @@ export interface Region {
   codigo: number;
   nombre: string;
 }
+
+// codigo -> año -> población (para tasas por 100.000 hab.).
+export type PoblacionPorAnio = Record<string, Record<string, number>>;
 export interface Servicio {
   codigo: number;
   nombre: string;
@@ -37,6 +40,7 @@ export interface Lookups {
   regiones: Region[];
   servicios: Servicio[];
   causas: Causa[];
+  poblacion: { region: PoblacionPorAnio; servicio: PoblacionPorAnio };
 }
 
 export interface GrupoEtario {
@@ -82,6 +86,7 @@ export interface Filtros {
   region: number | null; // null = todas las regiones
   servicio: number | null; // null = todos los servicios
   edad: MetricKey; // grupo etario
+  tasa: boolean; // solo al comparar por región: tasa por 100.000 hab.
 }
 
 // Serie (una línea) para el gráfico.

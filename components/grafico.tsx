@@ -12,16 +12,18 @@ import type { ClaveSerie, Serie } from "@/lib/types";
 import { CHROME, type Tema } from "@/lib/colores";
 import { fmt, fmtCompacto } from "@/lib/format";
 
-export interface ItemLeyenda {
-  label: string;
-  color: string;
-}
 export interface ExportSpec {
   titulo: string;
   subtitulo: string;
-  leyenda: ItemLeyenda[];
   pie: string[];
   nombre: string;
+}
+// Etiqueta directa: nombre de la serie anclado al final de su línea (px del SVG).
+interface Etiqueta {
+  label: string;
+  color: string;
+  ex: number;
+  ey: number;
 }
 export interface GraficoHandle {
   exportarPNG: (spec: ExportSpec) => void;
@@ -32,6 +34,7 @@ interface GraficoProps {
   colores: Map<ClaveSerie, string>;
   tema: Tema;
   yLabel: string;
+  formatoValor?: (n: number) => string;
 }
 
 interface ItemHover {
@@ -59,9 +62,10 @@ function techoAgradable(x: number): number {
 }
 
 export const Grafico = forwardRef<GraficoHandle, GraficoProps>(function Grafico(
-  { series, colores, tema, yLabel },
+  { series, colores, tema, yLabel, formatoValor },
   ref,
 ) {
+  const fmtVal = formatoValor ?? fmt;
   const contRef = useRef<HTMLDivElement>(null);
   const plotRef = useRef<HTMLDivElement>(null);
   const [ancho, setAncho] = useState(0);
@@ -77,10 +81,22 @@ export const Grafico = forwardRef<GraficoHandle, GraficoProps>(function Grafico(
   useImperativeHandle(ref, () => ({
     exportarPNG: (spec: ExportSpec) => {
       const svg = plotRef.current?.querySelector("svg");
-      if (svg)
-        componerPNG(svg, spec, tema).catch((e) =>
-          console.error("Exportación PNG falló:", e),
-        );
+      const est = escalasRef.current;
+      if (!svg || !est) return;
+      const etiquetas: Etiqueta[] = series
+        .filter((s) => s.puntos.length > 0)
+        .map((s) => {
+          const u = s.puntos[s.puntos.length - 1];
+          return {
+            label: s.label + (s.esActual ? " (en curso)" : ""),
+            color: colores.get(s.clave) ?? CHROME[tema].muted,
+            ex: est.x.apply(u.semana),
+            ey: est.y.apply(u.valor),
+          };
+        });
+      componerPNG(svg, spec, etiquetas, tema).catch((e) =>
+        console.error("Exportación PNG falló:", e),
+      );
     },
   }));
 
@@ -254,8 +270,8 @@ export const Grafico = forwardRef<GraficoHandle, GraficoProps>(function Grafico(
 
   if (!hayDatos) {
     return (
-      <div className="flex h-[340px] items-center justify-center rounded-lg border border-line text-sm text-ink-2">
-        No hay datos para los filtros seleccionados.
+      <div className="flex h-[340px] items-center justify-center rounded-lg border border-line px-6 text-center text-sm text-ink-2">
+        Selecciona al menos una serie para comparar (o ajusta los filtros).
       </div>
     );
   }
@@ -328,7 +344,7 @@ export const Grafico = forwardRef<GraficoHandle, GraficoProps>(function Grafico(
                     </span>
                   </span>
                   <span className="tnum shrink-0 font-medium text-ink">
-                    {fmt(it.valor)}
+                    {fmtVal(it.valor)}
                   </span>
                 </li>
               ))}
@@ -350,10 +366,13 @@ function cargarImagen(url: string): Promise<HTMLImageElement> {
 }
 
 // Compone un PNG (2x) autoexplicativo: título, subtítulo (qué se compara y su
-// contexto), el gráfico, la leyenda con colores y un pie con fuente y autoría.
+// contexto), el gráfico con ETIQUETAS DIRECTAS de cada serie a la derecha (guía
+// de color hasta el final de su línea, con anti-solape) y un pie con fuente/autoría.
+// Las etiquetas directas evitan tener que emparejar colores con una leyenda aparte.
 async function componerPNG(
   svg: SVGSVGElement,
   spec: ExportSpec,
+  etiquetas: Etiqueta[],
   tema: Tema,
 ): Promise<void> {
   const c = CHROME[tema];
@@ -362,7 +381,6 @@ async function componerPNG(
   const FONT = 'system-ui, -apple-system, "Segoe UI", sans-serif';
   const escala = 2;
   const padX = 24;
-  const maxW = W - padX * 2;
 
   // Rasterizar el gráfico (con su propio fondo).
   const clone = svg.cloneNode(true) as SVGSVGElement;
@@ -379,56 +397,63 @@ async function componerPNG(
     "data:image/svg+xml;charset=utf-8," + encodeURIComponent(xml),
   );
 
-  // Medir cuántas filas ocupa la leyenda.
+  // Etiquetas directas: fuente según cantidad; acortamos el prefijo redundante.
+  const corto = (s: string) => s.replace(/^Servicio de Salud /i, "");
+  const n = etiquetas.length;
+  const lineH = Math.max(11, Math.min(16, Math.floor((Hc - 8) / Math.max(1, n))));
+  const fontSize = Math.max(9, Math.min(13, lineH - 3));
+  const dotR = 3.5;
+  const dotGap = 8;
+
   const medidor = document.createElement("canvas").getContext("2d");
   if (!medidor) return;
-  medidor.font = `13px ${FONT}`;
-  const sw = 16,
-    swGap = 6,
-    itemGap = 18,
-    legRowH = 22;
-  const items = spec.leyenda.map((it) => ({
-    ...it,
-    w: sw + swGap + medidor.measureText(it.label).width,
+  medidor.font = `${fontSize}px ${FONT}`;
+  const puntos = etiquetas.map((e) => ({
+    color: e.color,
+    ex: e.ex,
+    ey: e.ey,
+    texto: corto(e.label),
+    slot: e.ey,
   }));
-  let filas = items.length ? 1 : 0;
-  let cursor = 0;
-  for (const it of items) {
-    if (cursor > 0 && cursor + it.w > maxW) {
-      filas++;
-      cursor = 0;
-    }
-    cursor += it.w + itemGap;
+  const maxTextW = puntos.reduce(
+    (m, p) => Math.max(m, medidor.measureText(p.texto).width),
+    0,
+  );
+  const gutter = n ? Math.ceil(8 + dotR * 2 + dotGap + maxTextW + 14) : padX;
+
+  // Anti-solape: ordenar por y del extremo, empujar hacia abajo y encuadrar.
+  puntos.sort((a, b) => a.slot - b.slot);
+  let prev = -Infinity;
+  for (const p of puntos) {
+    p.slot = Math.max(p.slot, prev + lineH);
+    prev = p.slot;
+  }
+  const overflow = prev - (Hc - 4);
+  if (overflow > 0) for (const p of puntos) p.slot -= overflow;
+  if (puntos.length && puntos[0].slot < 4) {
+    const d = 4 - puntos[0].slot;
+    for (const p of puntos) p.slot += d;
   }
 
   const yTop = 22,
     yBottom = 22,
     gapChart = 14,
-    gapLeg = 14,
     gapPie = 14;
   const hTitulo = spec.titulo ? 26 : 0;
   const hSub = spec.subtitulo ? 20 : 0;
   const totalH =
-    yTop +
-    hTitulo +
-    hSub +
-    gapChart +
-    Hc +
-    gapLeg +
-    filas * legRowH +
-    gapPie +
-    spec.pie.length * 16 +
-    yBottom;
+    yTop + hTitulo + hSub + gapChart + Hc + gapPie + spec.pie.length * 16 + yBottom;
+  const totalW = W + gutter;
 
   const canvas = document.createElement("canvas");
-  canvas.width = W * escala;
+  canvas.width = totalW * escala;
   canvas.height = Math.round(totalH) * escala;
   const ctx = canvas.getContext("2d");
   if (!ctx) return;
   ctx.scale(escala, escala);
   ctx.textBaseline = "top";
   ctx.fillStyle = c.surface;
-  ctx.fillRect(0, 0, W, totalH);
+  ctx.fillRect(0, 0, totalW, totalH);
 
   let y = yTop;
   if (spec.titulo) {
@@ -444,24 +469,33 @@ async function componerPNG(
     y += hSub;
   }
   y += gapChart;
-  ctx.drawImage(chart, 0, y, W, Hc);
-  y += Hc + gapLeg;
+  const yChart = y;
+  ctx.drawImage(chart, 0, yChart, W, Hc);
 
-  ctx.font = `13px ${FONT}`;
-  let lx = padX;
-  for (const it of items) {
-    if (lx > padX && lx - padX + it.w > maxW) {
-      lx = padX;
-      y += legRowH;
-    }
-    ctx.fillStyle = it.color;
-    ctx.fillRect(lx, y + 8, sw, 3);
-    ctx.fillStyle = c.ink2;
-    ctx.fillText(it.label, lx + sw + swGap, y + 2);
-    lx += it.w + itemGap;
+  // Etiquetas directas a la derecha, con guía a cada línea.
+  const dotX = W + 8;
+  const textX = dotX + dotR * 2 + dotGap;
+  ctx.font = `${fontSize}px ${FONT}`;
+  ctx.textBaseline = "middle";
+  for (const p of puntos) {
+    const my = yChart + p.slot + fontSize / 2;
+    ctx.strokeStyle = p.color;
+    ctx.globalAlpha = 0.55;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(p.ex, yChart + p.ey);
+    ctx.lineTo(dotX, my);
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = p.color;
+    ctx.beginPath();
+    ctx.arc(dotX + dotR, my, dotR, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = c.ink;
+    ctx.fillText(p.texto, textX, my);
   }
-  if (items.length) y += legRowH;
-  y += gapPie;
+  ctx.textBaseline = "top";
+  y = yChart + Hc + gapPie;
 
   ctx.font = `11px ${FONT}`;
   ctx.fillStyle = c.muted;

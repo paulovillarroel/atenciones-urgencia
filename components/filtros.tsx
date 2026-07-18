@@ -6,6 +6,7 @@ import {
   Calendar,
   GitCompare,
   MapPin,
+  Percent,
   Users,
 } from "lucide-react";
 import type {
@@ -62,6 +63,9 @@ export function PanelFiltros({
 
   const mostrarRegion = comparar !== "region";
   const mostrarServicio = comparar !== "servicio" && comparar !== "region";
+  const tasaDisponible =
+    (comparar === "region" || comparar === "servicio") &&
+    Object.keys(lookups.poblacion[comparar]).length > 0;
 
   const serviciosVisibles =
     filtros.region === null
@@ -105,6 +109,39 @@ export function PanelFiltros({
           })}
         </div>
       </div>
+
+      {/* Métrica: absoluto vs tasa (regiones o servicios, si hay población) */}
+      {tasaDisponible && (
+        <div className="flex flex-col gap-1.5">
+          <span className="flex items-center gap-1.5 text-xs font-medium text-ink-2">
+            <Percent {...iconAttrs} />
+            Métrica
+          </span>
+          <div className="flex flex-wrap gap-1">
+            {[
+              { tasa: false, label: "Valor absoluto" },
+              { tasa: true, label: "Tasa (por 100.000 hab.)" },
+            ].map((op) => {
+              const activo = filtros.tasa === op.tasa;
+              return (
+                <button
+                  key={op.label}
+                  type="button"
+                  onClick={() => onCambio({ tasa: op.tasa })}
+                  aria-pressed={activo}
+                  className={`rounded-md border px-3 py-1.5 text-sm transition-colors ${
+                    activo
+                      ? "border-accent bg-accent/10 font-medium text-ink"
+                      : "border-line text-ink-2 hover:text-ink"
+                  }`}
+                >
+                  {op.label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Contexto (dimensiones fijas) */}
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
@@ -247,12 +284,8 @@ function MultiSeleccion({
   const orden = opciones.map((o) => o.clave);
   const toggle = (clave: ClaveSerie) => {
     const nuevo = new Set(sel);
-    if (nuevo.has(clave)) {
-      if (nuevo.size === 1) return; // siempre al menos una serie
-      nuevo.delete(clave);
-    } else {
-      nuevo.add(clave);
-    }
+    if (nuevo.has(clave)) nuevo.delete(clave);
+    else nuevo.add(clave);
     onCambio(orden.filter((c) => nuevo.has(c))); // mantiene orden canónico
   };
   const lista = reverso ? [...opciones].reverse() : opciones;
@@ -277,6 +310,13 @@ function MultiSeleccion({
             className="text-xs text-muted underline-offset-2 hover:text-ink-2 hover:underline"
           >
             Todos
+          </button>
+          <button
+            type="button"
+            onClick={() => onCambio([])}
+            className="text-xs text-muted underline-offset-2 hover:text-ink-2 hover:underline"
+          >
+            Limpiar
           </button>
         </div>
       </div>

@@ -12,7 +12,7 @@ import {
   opcionesDe,
   pluralDe,
 } from "@/lib/comparar";
-import { fmt } from "@/lib/format";
+import { fmt, fmtTasa } from "@/lib/format";
 import { useTema } from "./use-tema";
 import { BotonTema } from "./boton-tema";
 import { PanelFiltros } from "./filtros";
@@ -49,6 +49,7 @@ export function Dashboard() {
           region: null,
           servicio: null,
           edad: "total",
+          tasa: false,
         });
       })
       .catch((e: unknown) => {
@@ -63,13 +64,7 @@ export function Dashboard() {
     const orden = opcionesDe(filtros.comparar, base.lookups, base.meta).map(
       (o) => o.clave,
     );
-    return mapaColoresComparar(
-      filtros.comparar,
-      filtros.multi,
-      orden,
-      base.meta.anios,
-      tema,
-    );
+    return mapaColoresComparar(filtros.comparar, filtros.multi, orden, tema);
   }, [base, filtros, tema]);
 
   const series: Serie[] = useMemo(() => {
@@ -107,6 +102,33 @@ export function Dashboard() {
   const { lookups, meta } = base;
   const ctx = contexto(filtros, lookups, meta);
 
+  // Tasa por 100.000 hab. (al comparar regiones o servicios): divide cada serie
+  // por la población de su área en el año de contexto. Permite comparar áreas de
+  // distinto tamaño. Requiere que exista tabla de población para esa dimensión.
+  const dimGeo =
+    filtros.comparar === "region" || filtros.comparar === "servicio";
+  const tablaPob = dimGeo
+    ? lookups.poblacion[filtros.comparar as "region" | "servicio"]
+    : undefined;
+  const hayPoblacion = !!tablaPob && Object.keys(tablaPob).length > 0;
+  const esTasa = filtros.tasa && dimGeo && hayPoblacion;
+  const seriesVista: Serie[] = esTasa
+    ? series.map((s) => {
+        const pob = tablaPob?.[String(s.clave)]?.[String(filtros.anio)];
+        return pob
+          ? {
+              ...s,
+              puntos: s.puntos.map((p) => ({
+                semana: p.semana,
+                valor: (p.valor / pob) * 100000,
+              })),
+            }
+          : s;
+      })
+    : series;
+  const yLabel = esTasa ? "Atenciones por 100.000 hab." : "Atenciones";
+  const formatoValor = esTasa ? fmtTasa : fmt;
+
   const acumuladoActual =
     filtros.comparar === "anio"
       ? (series
@@ -143,22 +165,18 @@ export function Dashboard() {
         multi: multiPorDefecto(dim, lookups, meta),
       };
       if (dim === "region") next.servicio = null;
+      next.tasa = false; // la tasa se re-activa por vista (región/servicio)
       return next;
     });
 
   const exportar = () => {
     const dim = pluralDe(filtros.comparar).toLowerCase();
-    const conDatos = series.filter((s) => s.puntos.length > 0);
-    const ordenLeyenda =
-      filtros.comparar === "anio" ? [...conDatos].reverse() : conDatos;
     graficoRef.current?.exportarPNG({
       titulo: "Atenciones de urgencia respiratorias · Chile",
       subtitulo:
-        `Comparación por ${dim}` + (ctx.length ? ` · ${ctx.join(" · ")}` : ""),
-      leyenda: ordenLeyenda.map((s) => ({
-        label: s.label + (s.esActual ? " (en curso)" : ""),
-        color: colores.get(s.clave) ?? "#888888",
-      })),
+        `Comparación por ${dim}` +
+        (ctx.length ? ` · ${ctx.join(" · ")}` : "") +
+        (esTasa ? " · tasa por 100.000 hab." : ""),
       pie: [
         `Fuente: ${meta.fuente}`,
         `Visualización: ${AUTOR}` +
@@ -166,7 +184,7 @@ export function Dashboard() {
             ? ` · datos al ${fechaLarga.format(new Date(meta.fuenteActualizada))}`
             : ""),
       ],
-      nombre: `urgencias-respiratorias-por-${dim.replace(/\s+/g, "-")}.png`,
+      nombre: `urgencias-respiratorias-por-${dim.replace(/\s+/g, "-")}${esTasa ? "-tasa" : ""}.png`,
     });
   };
 
@@ -238,14 +256,15 @@ export function Dashboard() {
 
         <Grafico
           ref={graficoRef}
-          series={series}
+          series={seriesVista}
           colores={colores}
           tema={tema}
-          yLabel="Atenciones"
+          yLabel={yLabel}
+          formatoValor={formatoValor}
         />
 
         <Leyenda
-          series={series}
+          series={seriesVista}
           colores={colores}
           reverso={filtros.comparar === "anio"}
         />
