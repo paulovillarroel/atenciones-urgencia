@@ -378,20 +378,26 @@ export function Dashboard() {
               />
             )}
             <Stat
-              label="Semana peak"
+              label={
+                refStats.refNombre ? `Peak ${refStats.refNombre}` : "Semana peak"
+              }
               valor={`Sem. ${stats.peak.semana}`}
               sub={formatoValor(stats.peak.valor)}
             />
             <Stat
-              label={`Última (sem. ${stats.ult.semana})`}
-              valor={formatoValor(stats.ult.valor)}
-              sub={
-                stats.deltaPct != null
-                  ? `${stats.deltaPct >= 0 ? "↑" : "↓"} ${Math.abs(
-                      stats.deltaPct,
-                    ).toFixed(0)}% vs. previa`
-                  : undefined
+              label={
+                refStats.refNombre
+                  ? `Última ${refStats.refNombre}`
+                  : "Última semana"
               }
+              valor={formatoValor(stats.ult.valor)}
+              sub={`sem. ${stats.ult.semana}${
+                stats.deltaPct != null
+                  ? ` · ${stats.deltaPct >= 0 ? "↑" : "↓"} ${Math.abs(
+                      stats.deltaPct,
+                    ).toFixed(0)}%`
+                  : ""
+              }`}
             />
           </div>
         )}
@@ -545,12 +551,18 @@ function calcularRefStats(
   series: Serie[],
   comparar: Dimension,
   esTasa: boolean,
-): { puntos: PuntoSemana[]; tituloTotal: string } | null {
+): { puntos: PuntoSemana[]; tituloTotal: string; refNombre: string } | null {
   const conDatos = series.filter((s) => s.puntos.length > 0);
   if (conDatos.length === 0) return null;
   if (comparar === "anio") {
+    // Al comparar años las estadísticas son del año en curso (o el más reciente
+    // seleccionado): `refNombre` lo hace explícito en las etiquetas.
     const s = conDatos.find((x) => x.esActual) ?? conDatos[conDatos.length - 1];
-    return { puntos: s.puntos, tituloTotal: `Acumulado ${s.label}` };
+    return {
+      puntos: s.puntos,
+      tituloTotal: `Acumulado ${s.label}`,
+      refNombre: s.label,
+    };
   }
   if (esTasa) return null; // sumar tasas no tiene sentido
   const porSem = new Map<number, number>();
@@ -560,7 +572,7 @@ function calcularRefStats(
   const puntos = [...porSem.entries()]
     .sort((a, b) => a[0] - b[0])
     .map(([semana, valor]) => ({ semana, valor }));
-  return { puntos, tituloTotal: "Total mostrado" };
+  return { puntos, tituloTotal: "Total mostrado", refNombre: "" };
 }
 
 function calcularStats(pts: PuntoSemana[]) {
