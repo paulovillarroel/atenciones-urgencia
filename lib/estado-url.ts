@@ -2,7 +2,14 @@
 // Solo se escriben los parámetros que difieren del estado por defecto, así la
 // vista inicial deja la URL limpia. Se valida todo lo que entra (URLs a mano).
 
-import type { BaseDatos, ClaveSerie, Dimension, Filtros, MetricKey } from "./types";
+import type {
+  BaseDatos,
+  ClaveSerie,
+  Dimension,
+  Filtros,
+  MetricKey,
+  Seccion,
+} from "./types";
 import { DIMENSIONES_DETALLE } from "./types";
 import { multiPorDefecto } from "./comparar";
 
@@ -22,6 +29,7 @@ export function filtrosPorDefecto(base: BaseDatos): Filtros {
     comparar: "anio",
     multi: multiPorDefecto("anio", base.lookups, base.meta),
     anio: base.meta.anioActual,
+    seccion: "atencion",
     causa: 3,
     region: null,
     servicio: null,
@@ -54,8 +62,10 @@ function parsearMulti(
   params: URLSearchParams,
   comparar: Dimension,
   base: BaseDatos,
+  seccion: Seccion,
 ): ClaveSerie[] {
-  const porDefecto = () => multiPorDefecto(comparar, base.lookups, base.meta);
+  const porDefecto = () =>
+    multiPorDefecto(comparar, base.lookups, base.meta, seccion);
   const raw = params.get("sel");
   if (raw == null) return porDefecto();
   const partes = raw
@@ -100,14 +110,21 @@ export function filtrosDesdeParams(
     return Number.isFinite(n) && valida(n) ? n : fallback;
   };
 
+  const seccion: Seccion =
+    params.get("sec") === "h" ? "hospitalizacion" : "atencion";
+  const causaDef = seccion === "hospitalizacion" ? 33 : 3;
   const edadRaw = params.get("edad") as MetricKey | null;
   return {
     comparar,
-    multi: parsearMulti(params, comparar, base),
+    multi: parsearMulti(params, comparar, base, seccion),
     anio: num("anio", (n) => meta.anios.includes(n), def.anio) ?? def.anio,
+    seccion,
     causa:
-      num("causa", (n) => lookups.causas.some((c) => c.orden === n), def.causa) ??
-      def.causa,
+      num(
+        "causa",
+        (n) => lookups.causas.some((c) => c.orden === n && c.seccion === seccion),
+        causaDef,
+      ) ?? causaDef,
     region: num("region", (n) => lookups.regiones.some((r) => r.codigo === n), null),
     servicio: num(
       "servicio",
@@ -133,8 +150,10 @@ export function paramsDeFiltros(f: Filtros, base: BaseDatos): URLSearchParams {
   const def = filtrosPorDefecto(base);
   const p = new URLSearchParams();
   if (f.comparar !== def.comparar) p.set("cmp", f.comparar);
+  if (f.seccion === "hospitalizacion") p.set("sec", "h");
   if (f.comparar !== "anio" && f.anio !== def.anio) p.set("anio", String(f.anio));
-  if (f.comparar !== "causa" && f.causa !== def.causa)
+  const causaDef = f.seccion === "hospitalizacion" ? 33 : 3;
+  if (f.comparar !== "causa" && f.causa !== causaDef)
     p.set("causa", String(f.causa));
   if (f.comparar !== "edad" && f.edad !== def.edad) p.set("edad", f.edad);
   if (f.comparar !== "region" && f.region != null)
@@ -146,7 +165,7 @@ export function paramsDeFiltros(f: Filtros, base: BaseDatos): URLSearchParams {
   if (f.comparar !== "comuna" && f.comuna != null) p.set("comuna", f.comuna);
   if (f.tasa) p.set("tasa", "1");
   if (f.log) p.set("log", "1");
-  const defMulti = multiPorDefecto(f.comparar, base.lookups, base.meta);
+  const defMulti = multiPorDefecto(f.comparar, base.lookups, base.meta, f.seccion);
   if (f.multi.length > 0 && !mismoConjunto(f.multi, defMulti))
     p.set("sel", f.multi.join(","));
   return p;

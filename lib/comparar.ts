@@ -4,6 +4,7 @@ import type {
   Lookups,
   Meta,
   MetricKey,
+  Seccion,
 } from "./types";
 
 export const DIMENSIONES: {
@@ -42,12 +43,15 @@ export function opcionesDe(
   dim: Dimension,
   lookups: Lookups,
   meta: Meta,
+  seccion?: Seccion,
 ): { clave: ClaveSerie; label: string }[] {
   switch (dim) {
     case "anio":
       return meta.anios.map((a) => ({ clave: a, label: String(a) }));
     case "causa":
-      return lookups.causas.map((c) => ({ clave: c.orden, label: c.label }));
+      return lookups.causas
+        .filter((c) => !seccion || c.seccion === seccion)
+        .map((c) => ({ clave: c.orden, label: c.label }));
     case "edad":
       return meta.gruposEtarios
         .filter((g) => g.key !== "total")
@@ -117,12 +121,15 @@ export function multiPorDefecto(
   dim: Dimension,
   lookups: Lookups,
   meta: Meta,
+  seccion?: Seccion,
 ): ClaveSerie[] {
   switch (dim) {
     case "anio":
       return meta.anios.slice(-5);
     case "causa":
-      return [4, 6, 7, 8].filter((o) => lookups.causas.some((c) => c.orden === o));
+      return (
+        seccion === "hospitalizacion" ? [33, 34, 35] : [4, 6, 7, 8]
+      ).filter((o) => lookups.causas.some((c) => c.orden === o));
     case "edad":
       return meta.gruposEtarios
         .filter((g) => g.key !== "total")
@@ -139,6 +146,7 @@ export function multiPorDefecto(
 
 interface CtxFiltros {
   comparar: Dimension;
+  seccion: Seccion;
   anio: number;
   causa: number;
   region: number | null;
@@ -177,6 +185,7 @@ export function contexto(
   nombres?: NombresDetalle,
 ): string[] {
   const p: string[] = [];
+  if (f.seccion === "hospitalizacion") p.push("Hospitalizaciones");
   if (f.comparar !== "anio") p.push(String(f.anio));
   if (f.comparar !== "causa")
     p.push(lookups.causas.find((c) => c.orden === f.causa)?.label ?? "");

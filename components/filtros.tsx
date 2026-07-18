@@ -10,6 +10,7 @@ import {
   MapPinned,
   Percent,
   Ruler,
+  Stethoscope,
   Users,
 } from "lucide-react";
 import type {
@@ -106,7 +107,7 @@ export function PanelFiltros({
       ? lookups.servicios
           .filter((s) => s.region === filtros.region)
           .map((s) => ({ clave: s.codigo as ClaveSerie, label: acortarServicio(s.nombre) }))
-      : opcionesDe(comparar, lookups, meta);
+      : opcionesDe(comparar, lookups, meta, filtros.seccion);
 
   return (
     // @container: los grids internos se adaptan al ancho del panel (angosto en
@@ -134,6 +135,39 @@ export function PanelFiltros({
                 }`}
               >
                 {d.plural}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Sección: atenciones de urgencia u hospitalizaciones */}
+      <div className="flex flex-col gap-1.5">
+        <span className="flex items-center gap-1.5 text-xs font-medium text-ink-2">
+          <Stethoscope {...iconAttrs} />
+          Sección
+        </span>
+        <div className="flex flex-wrap gap-1">
+          {(
+            [
+              { seccion: "atencion", label: "Atenciones" },
+              { seccion: "hospitalizacion", label: "Hospitalizaciones" },
+            ] as const
+          ).map((op) => {
+            const activo = filtros.seccion === op.seccion;
+            return (
+              <button
+                key={op.seccion}
+                type="button"
+                onClick={() => onCambio({ seccion: op.seccion })}
+                aria-pressed={activo}
+                className={`rounded-md border px-3 py-1.5 text-sm transition-colors ${
+                  activo
+                    ? "border-accent bg-accent/10 font-medium text-ink"
+                    : "border-line text-ink-2 hover:text-ink"
+                }`}
+              >
+                {op.label}
               </button>
             );
           })}
@@ -229,11 +263,13 @@ export function PanelFiltros({
               value={filtros.causa}
               onChange={(e) => onCambio({ causa: Number(e.target.value) })}
             >
-              {lookups.causas.map((c) => (
-                <option key={c.orden} value={c.orden}>
-                  {c.label} ({c.cie10})
-                </option>
-              ))}
+              {lookups.causas
+                .filter((c) => c.seccion === filtros.seccion)
+                .map((c) => (
+                  <option key={c.orden} value={c.orden}>
+                    {c.label} ({c.cie10})
+                  </option>
+                ))}
             </select>
           </Campo>
         )}

@@ -32,8 +32,9 @@ const PARQUET_URL =
 const FUENTE_URL =
   "https://datos.gob.cl/dataset/atenciones-de-urgencia-causas-respiratorias";
 
-// Causas del bloque "atenciones de urgencia" (v1). Hospitalizaciones = 33,34,35.
-const ATENCION_ORDENES = [3, 4, 5, 6, 7, 8, 9, 10, 11];
+// Órdenes de causa incluidos: atenciones de urgencia (3–11) y hospitalizaciones
+// (33/34/35, prefijo "- " en la glosa: total respiratorio + 2 tipos de COVID).
+const CAUSA_ORDENES = [3, 4, 5, 6, 7, 8, 9, 10, 11, 33, 34, 35];
 
 // Grupos etarios: columna en el dato -> clave y etiqueta en la app.
 const GRUPOS_ETARIOS = [
@@ -69,15 +70,20 @@ const REGIONES = [
 
 // Etiquetas limpias de causas (las glosas crudas traen MAYUSCULAS y espacios dobles).
 const CAUSAS = [
-  { orden: 3, label: "Total sistema respiratorio", cie10: "J00-J98", grupo: "respiratorio", esTotal: true },
-  { orden: 4, label: "IRA alta", cie10: "J00-J06", grupo: "respiratorio", esTotal: false },
-  { orden: 5, label: "Influenza", cie10: "J09-J11", grupo: "respiratorio", esTotal: false },
-  { orden: 6, label: "Neumonía", cie10: "J12-J18", grupo: "respiratorio", esTotal: false },
-  { orden: 7, label: "Bronquitis / bronquiolitis aguda", cie10: "J20-J21", grupo: "respiratorio", esTotal: false },
-  { orden: 8, label: "Crisis obstructiva bronquial", cie10: "J40-J46", grupo: "respiratorio", esTotal: false },
-  { orden: 9, label: "Otras causas respiratorias", cie10: "J22, J30-J39, J47, J60-J98", grupo: "respiratorio", esTotal: false },
-  { orden: 10, label: "COVID-19 (virus no identificado)", cie10: "U07.2", grupo: "covid", esTotal: false },
-  { orden: 11, label: "COVID-19 (virus identificado)", cie10: "U07.1", grupo: "covid", esTotal: false },
+  { orden: 3, label: "Total sistema respiratorio", cie10: "J00-J98", grupo: "respiratorio", esTotal: true, seccion: "atencion" },
+  { orden: 4, label: "IRA alta", cie10: "J00-J06", grupo: "respiratorio", esTotal: false, seccion: "atencion" },
+  { orden: 5, label: "Influenza", cie10: "J09-J11", grupo: "respiratorio", esTotal: false, seccion: "atencion" },
+  { orden: 6, label: "Neumonía", cie10: "J12-J18", grupo: "respiratorio", esTotal: false, seccion: "atencion" },
+  { orden: 7, label: "Bronquitis / bronquiolitis aguda", cie10: "J20-J21", grupo: "respiratorio", esTotal: false, seccion: "atencion" },
+  { orden: 8, label: "Crisis obstructiva bronquial", cie10: "J40-J46", grupo: "respiratorio", esTotal: false, seccion: "atencion" },
+  { orden: 9, label: "Otras causas respiratorias", cie10: "J22, J30-J39, J47, J60-J98", grupo: "respiratorio", esTotal: false, seccion: "atencion" },
+  { orden: 10, label: "COVID-19 (virus no identificado)", cie10: "U07.2", grupo: "covid", esTotal: false, seccion: "atencion" },
+  { orden: 11, label: "COVID-19 (virus identificado)", cie10: "U07.1", grupo: "covid", esTotal: false, seccion: "atencion" },
+  // Hospitalizaciones: de las atenciones, cuántas derivaron en hospitalización.
+  // Solo 3 categorías (no hay subcausas como en atenciones).
+  { orden: 33, label: "Total sistema respiratorio", cie10: "J00-J98", grupo: "respiratorio", esTotal: true, seccion: "hospitalizacion" },
+  { orden: 34, label: "COVID-19 (virus no identificado)", cie10: "U07.2", grupo: "covid", esTotal: false, seccion: "hospitalizacion" },
+  { orden: 35, label: "COVID-19 (virus identificado)", cie10: "U07.1", grupo: "covid", esTotal: false, seccion: "hospitalizacion" },
 ];
 
 const CODIGO_SIN_INFO = 0;
@@ -118,13 +124,15 @@ async function main() {
       Num15a64Anios::INTEGER                          AS e15_64,
       Num65oMas::INTEGER                              AS e65
     FROM read_parquet('${PARQUET_URL}')
-    WHERE OrdenCausa IN (${ATENCION_ORDENES.join(",")})
+    WHERE OrdenCausa IN (${CAUSA_ORDENES.join(",")})
   `);
 
   const totalRawRows = num(
     (await conn.runAndReadAll("SELECT count(*) AS n FROM raw")).getRowObjects()[0].n,
   );
-  console.log(`  filas de atenciones: ${totalRawRows.toLocaleString("es-CL")}`);
+  console.log(
+    `  filas (atenciones + hospitalizaciones): ${totalRawRows.toLocaleString("es-CL")}`,
+  );
 
   // Ano en curso = maximo Anio presente.
   const anioActual = num(
@@ -266,7 +274,7 @@ async function main() {
   await writeFile(resolve(OUT_DIR, "meta.json"), JSON.stringify(meta, null, 2));
 
   // Detalle a nivel establecimiento/comuna para consultas en el navegador
-  // (DuckDB-WASM): parquet compacto (solo atenciones, sin la semana incompleta).
+  // (DuckDB-WASM): parquet compacto (atenciones + hospitalizaciones, sin semana incompleta).
   console.log("Escribiendo detalle.parquet (establecimiento/comuna)…");
   await conn.run(`
     COPY (

@@ -35,12 +35,16 @@ export interface Servicio {
   nombre: string;
   region: number;
 }
+// Sección del dato: atenciones de urgencia u hospitalizaciones (subconjunto).
+export type Seccion = "atencion" | "hospitalizacion";
+
 export interface Causa {
   orden: number;
   label: string;
   cie10: string;
   grupo: "respiratorio" | "covid";
   esTotal: boolean;
+  seccion: Seccion;
 }
 export interface Lookups {
   regiones: Region[];
@@ -120,6 +124,7 @@ export interface Filtros {
   multi: ClaveSerie[]; // valores seleccionados de la dimensión comparada
   // Valores de contexto (se usan cuando esa dimensión NO es la comparada):
   anio: number;
+  seccion: Seccion; // atenciones u hospitalizaciones (define el set de causas)
   causa: number; // OrdenCausa
   region: number | null; // null = todas las regiones
   servicio: number | null; // null = todos los servicios

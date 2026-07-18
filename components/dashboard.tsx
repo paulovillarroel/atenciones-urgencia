@@ -143,7 +143,9 @@ export function Dashboard() {
     if (!base || !filtros) return new Map<ClaveSerie, string>();
     const orden = DIMENSIONES_DETALLE.includes(filtros.comparar)
       ? filtros.multi
-      : opcionesDe(filtros.comparar, base.lookups, base.meta).map((o) => o.clave);
+      : opcionesDe(filtros.comparar, base.lookups, base.meta, filtros.seccion).map(
+          (o) => o.clave,
+        );
     return mapaColoresComparar(filtros.comparar, filtros.multi, orden, tema);
   }, [base, filtros, tema]);
 
@@ -233,7 +235,9 @@ export function Dashboard() {
           : s;
       })
     : series;
-  const yLabel = esTasa ? "Atenciones por 100.000 hab." : "Atenciones";
+  const baseLabel =
+    filtros.seccion === "hospitalizacion" ? "Hospitalizaciones" : "Atenciones";
+  const yLabel = esTasa ? `${baseLabel} por 100.000 hab.` : baseLabel;
   const formatoValor = esTasa ? fmtTasa : fmt;
 
   // Resaltado efectivo: el hover manda; si no, el que está fijado (clic).
@@ -261,6 +265,13 @@ export function Dashboard() {
           if (next.multi.length === 0) next.multi = validos.slice(0, 3);
         }
       }
+      if ("seccion" in parcial) {
+        // Las causas dependen de la sección: se reinicia la causa de contexto y,
+        // si se compara por causa, la selección al default de la nueva sección.
+        next.causa = next.seccion === "hospitalizacion" ? 33 : 3;
+        if (next.comparar === "causa")
+          next.multi = multiPorDefecto("causa", lookups, meta, next.seccion);
+      }
       return next;
     });
 
@@ -270,7 +281,7 @@ export function Dashboard() {
       const next: Filtros = {
         ...prev,
         comparar: dim,
-        multi: multiPorDefecto(dim, lookups, meta),
+        multi: multiPorDefecto(dim, lookups, meta, prev.seccion),
       };
       if (dim === "region") next.servicio = null;
       next.tasa = false; // la tasa se re-activa por vista (región/servicio)
