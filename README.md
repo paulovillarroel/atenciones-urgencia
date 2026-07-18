@@ -42,6 +42,45 @@ Sitio estático que se **actualiza a diario** desde los datos abiertos del DEIS
 5. Una **GitHub Action** repite el pipeline y publica en GitHub Pages **cada día**
    (y en cada push).
 
+## Consultar el parquet desde el navegador (range reads)
+
+El `detalle.parquet` (nivel establecimiento/comuna) no se descarga entero:
+DuckDB-WASM lo consulta con SQL leyendo **solo los bytes que cada consulta
+necesita**, vía **HTTP Range Requests**. En la práctica es un pequeño "data lake"
+sobre un host estático, consultado desde el cliente sin ningún backend.
+
+![DuckDB-WASM consulta un Parquet remoto por Range Requests: lee el footer, poda row groups con las estadísticas min/máx y baja solo las columnas del SELECT](docs/range-reads.png)
+
+Encajan tres piezas:
+
+- **HTTP Range Requests.** El cliente pide un tramo de bytes
+  (`Range: bytes=1024-2048`) y el servidor responde `206 Partial Content` con solo
+  ese fragmento, en vez de `200 OK` con todo el archivo. Lo soporta cualquier host
+  que anuncie `Accept-Ranges: bytes` (incluido el CDN de GitHub Pages).
+- **La estructura de Parquet.** Es columnar: el archivo se divide en *row groups*
+  (bloques de filas); dentro de cada uno, cada columna vive junta en un *column
+  chunk*; y un *footer* al final guarda el esquema, el offset de cada chunk y
+  estadísticas min/máx por chunk.
+- **DuckDB-WASM.** DuckDB compilado a WebAssembly, con la extensión `httpfs`,
+  orquesta todo dentro del navegador.
+
+Recorrido de una consulta como `SELECT region, total FROM detalle.parquet WHERE …`:
+
+1. Lee el **footer** con una Range Request pequeña → aprende el layout y las
+   estadísticas del archivo.
+2. **Projection pushdown:** solo baja las columnas del `SELECT`; los offsets del
+   resto de columnas se ignoran.
+3. **Predicate pushdown:** con las estadísticas min/máx **descarta row groups
+   enteros** que no pueden cumplir el `WHERE`, sin llegar a tocarlos.
+4. Emite Range Requests dirigidas únicamente a los column chunks que sobreviven a
+   ambos filtros.
+
+Sobre un parquet de varios GB, una consulta selectiva puede transferir apenas unos
+MB. Como el `WHERE` real filtra por comuna/establecimiento, el pipeline escribe el
+`detalle.parquet` **ordenado por esas columnas** (`ORDER BY comuna, establecimiento`):
+así las filas de cada zona quedan contiguas, las estadísticas min/máx separan limpio
+y el *pruning* descarta más row groups.
+
 ## Desarrollo local
 
 Requiere Node 20+ (probado en Node 24).
