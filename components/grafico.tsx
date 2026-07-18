@@ -234,8 +234,12 @@ export const Grafico = forwardRef<GraficoHandle, GraficoProps>(function Grafico(
       const altoPx = Math.max(320, Math.min(540, Math.round(ancho * 0.52)));
       setAlto(altoPx);
 
+      // El eje X llega hasta la última semana con datos (no fija 52): al comparar
+      // años los años completos llegan a ~52, pero una vista de un solo año en
+      // curso (regiones/comunas/… en 2026) corta en su última semana, sin dejar
+      // media cancha vacía ni guías de etiqueta cruzando el vacío.
       const semanas = series.flatMap((s) => s.puntos.map((p) => p.semana));
-      const maxSemana = Math.max(52, ...semanas);
+      const maxSemana = semanas.length ? Math.max(...semanas) : 52;
       const maxValor = Math.max(
         1,
         ...series.flatMap((s) => s.puntos.map((p) => p.valor)),
