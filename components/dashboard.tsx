@@ -344,8 +344,8 @@ export function Dashboard() {
       </section>
 
       <section className="rounded-xl border border-line bg-surface p-4 sm:p-5">
-        <div className="mb-4 flex flex-wrap items-start justify-between gap-x-4 gap-y-2">
-          <div>
+        <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-x-4">
+          <div className="min-w-0">
             <h2 className="text-base font-semibold text-ink">
               Comparación por{" "}
               <span className="text-accent">
@@ -356,7 +356,7 @@ export function Dashboard() {
               <p className="mt-0.5 text-sm text-ink-2">{ctx.join(" · ")}</p>
             )}
           </div>
-          <div className="flex items-center gap-1.5">
+          <div className="flex shrink-0 items-center gap-1.5">
             <BotonCompartir />
             <button
               type="button"
